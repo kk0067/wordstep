@@ -83,8 +83,12 @@ if (typeof READING_BATCH_8 !== "undefined" && Array.isArray(READING_BATCH_8)) {
   FORMAL_READINGS = FORMAL_READINGS.concat(READING_BATCH_8);
 }
 
-// 合并：基础过渡在前，成考标准在后
-READINGS = BASIC_READINGS.concat(FORMAL_READINGS);
+if (typeof READING_BATCH_9 !== "undefined" && Array.isArray(READING_BATCH_9)) {
+  FORMAL_READINGS = FORMAL_READINGS.concat(READING_BATCH_9);
+}
+
+// 合并：全部为成考标准（已按用户要求移除基础过渡短文）
+READINGS = FORMAL_READINGS;
 
 // 统计
 const CONTENT_STATS = {
