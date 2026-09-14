@@ -12,3 +12,10 @@
 .reading-questions{margin-top:16px}
 .focus .btn.white{margin-bottom:8px}
 @media(max-width:700px){.phonetic{font-size:16px}.word{font-size:40px}.exam-meaning{font-size:13px}}
+
+/* 词汇阅读联动 */
+.word-known{border-bottom:2px solid #26724c !important;background:rgba(38,114,76,0.06) !important;}
+.choice.selected{border-color:#26724c !important;background:rgba(38,114,76,0.08) !important;}
+.reading-questions .qblock{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #eee;}
+.reading-questions .qblock:last-child{border-bottom:none;}
+.resultnum{font-size:48px;font-weight:700;color:#26724c;margin:16px 0;}

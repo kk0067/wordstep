@@ -135,7 +135,8 @@ function dueWords(){
     return r&&r.nextReview&&r.nextReview<=now&&r.status!=='new';
   }).sort((a,b)=>{
     const ra=state.records[a.id],rb=state.records[b.id];
-    // 优先：错误次数多的 > 连续正确少的 > 到期早的
+    // 优先：阅读查词次数多的 > 错误次数多的 > 连续正确少的 > 到期早的
+    if((rb.readingLookups||0)!==(ra.readingLookups||0))return (rb.readingLookups||0)-(ra.readingLookups||0);
     if(rb.wrongCount!==ra.wrongCount)return rb.wrongCount-ra.wrongCount;
     if(ra.streak!==rb.streak)return ra.streak-rb.streak;
     return (ra.nextReview||0)-(rb.nextReview||0);
@@ -167,8 +168,8 @@ function nextReviewTime(level,correct){
   return Date.now()+intervals[lvl]*DAY;
 }
 
-// 更新单词记录
-function updateWordRecord(id,correct,mode){
+// 更新单词记录 (fuzzy=true 表示"模糊"：有点印象但不确定，不降level，复习间隔较短)
+function updateWordRecord(id,correct,mode,fuzzy=false){
   const r=state.records[id]??={
     status:'new',firstLearned:dateKey(),lastReviewed:dateKey(),
     correctCount:0,wrongCount:0,streak:0,nextReview:Date.now(),level:0,
@@ -182,15 +183,22 @@ function updateWordRecord(id,correct,mode){
     if(r.streak>=5)r.status='mastered';
     else if(r.streak>=3)r.status='recognized';
     else r.status='learning';
+    r.nextReview=nextReviewTime(r.level,true);
+  }else if(fuzzy){
+    // 模糊：有点印象，不降level，streak保留，2天后复习
+    r.wrongCount++;
+    r.streak=Math.max(0,r.streak-1);
+    r.status='fuzzy';
+    r.nextReview=Date.now()+2*DAY;
+    if(!state.weakWords.includes(id))state.weakWords.push(id);
   }else{
     r.wrongCount++;
     r.streak=0;
     r.level=Math.max(0,r.level-1);
     r.status='fuzzy';
-    // 加入弱词列表
+    r.nextReview=Date.now()+10*60000; // 10分钟后
     if(!state.weakWords.includes(id))state.weakWords.push(id);
   }
-  r.nextReview=nextReviewTime(r.level,correct);
   // 更新最近学习
   state.recentLearned=state.recentLearned.filter(x=>x!==id);
   state.recentLearned.unshift(id);
@@ -201,7 +209,7 @@ function updateWordRecord(id,correct,mode){
 function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>$('#toast').style.display='none',3600)}
 
 // ===== 视图和导航 =====
-let view='home',filter='all',query='',readingIndex=0,translation=false,gloss='',options=[],lastQuestion='',quickMode=false,testMode=false;
+let view='home',filter='all',query='',readingIndex=0,translation=false,gloss='',options=[],lastQuestion='',quickMode=false,testMode=false,wordPage=0,readingMode='study';
 
 const navs=[
   ['home','◷','今日冲刺'],
@@ -223,7 +231,7 @@ function header(title,sub='河南成人高考 · 专升本英语 · 30天冲刺'
 }
 
 function render(){
-  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,sentence:sentence,grammar:grammarView,report:report,settings:settings}[view]||home)()+'</main></div>';
+  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,readingExam:readingExamView,sentence:sentence,grammar:grammarView,report:report,settings:settings}[view]||home)()+'</main></div>';
   bind();
 }
 
@@ -339,7 +347,7 @@ function quickLearn(){
       '<button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button>'+
       '<div class="meaning">'+esc(w.meaning)+'</div>'+
       (w.examMeaning?'<div class="exam-meaning">考试：'+esc(w.examMeaning)+'</div>':'')+
-      (showDetail?detailSection(w):'<button class="linkbtn" data-act="toggleDetail" style="margin-top:10px">展开详情（例句/搭配/用法）</button>')+
+      (showDetail?detailSection(w):(w.example||w.collocations||w.commonUsage||w.examUsage||w.specialMeaning||w.wordFamily||w.confuseWith?'<button class="linkbtn" data-act="toggleDetail" style="margin-top:10px">展开详情（例句/搭配/用法）</button>':''))+
       '<div class="answerbar" style="margin-top:28px">'+
         '<button class="btn" style="background:#26724c" data-act="know">✓ 认识</button>'+
         '<button class="btn" style="background:#d4930a" data-act="fuzzy">~ 模糊</button>'+
@@ -368,13 +376,14 @@ function quickAnswer(known){
   const s=state.session;if(!s||s.mode!=='quick'||!s.queue[0])return;
   const item=s.queue.shift();
   const correct=known==='know';
-  const r=updateWordRecord(item.id,correct,'quick');
+  const fuzzy=known==='fuzzy';
+  const r=updateWordRecord(item.id,correct,'quick',fuzzy);
   const d=daily();
   if(!state.records[item.id]||state.records[item.id].firstLearned===dateKey())d.new++;
   d.attempts++;if(correct)d.correct++;
   s.done++;s.correct+=correct?1:0;
-  // 不认识的词插入队列后面重试
-  if(!correct&&!item.retry){
+  // 只有"不会"的词才插入队列后面立即重试；"模糊"的词2天后复习
+  if(!correct&&!fuzzy&&!item.retry){
     s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'learn',retry:true});
   }
   save();render();
@@ -450,7 +459,10 @@ function reviewView(){
 }
 
 function choices(w){
-  const pool=WORDS.filter(x=>x.id!==w.id&&x.meaning!==w.meaning&&!isPhrase(x));
+  // 优先同词性、同level(±1)的词作干扰项，更有迷惑性
+  const samePos=WORDS.filter(x=>x.id!==w.id&&x.meaning!==w.meaning&&!isPhrase(x)&&x.partOfSpeech===w.partOfSpeech&&Math.abs((x.level||0)-(w.level||0))<=1);
+  const samePosAny=WORDS.filter(x=>x.id!==w.id&&x.meaning!==w.meaning&&!isPhrase(x)&&x.partOfSpeech===w.partOfSpeech);
+  const pool=samePos.length>=3?samePos:(samePosAny.length>=3?samePosAny:WORDS.filter(x=>x.id!==w.id&&x.meaning!==w.meaning&&!isPhrase(x)));
   const picked=[w];
   while(picked.length<4&&pool.length){
     const p=pool[Math.floor(Math.random()*pool.length)];
@@ -585,6 +597,10 @@ function wordlist(){
   }).filter(w=>!query||(w.word+' '+w.meaning).toLowerCase().includes(query.toLowerCase()));
 
   const levelNames=['基础起步','最高频核心','成考核心','阅读高频','考试识别','低频补充'];
+  const pageSize=100;
+  const totalPages=Math.max(1,Math.ceil(ws.length/pageSize));
+  if(wordPage>=totalPages)wordPage=totalPages-1;
+  const pageWords=ws.slice(wordPage*pageSize,(wordPage+1)*pageSize);
   return header('我的词库')+
   '<p class="muted small">共 '+uniqueWords().length+' 词 + '+phrases().length+' 短语。Core 2000：'+core2000().length+' · Core 3000：'+core3000().length+'</p>'+
   '<input class="search" id="search" aria-label="搜索" placeholder="搜索单词或中文意思" value="'+esc(query)+'">'+
@@ -593,12 +609,17 @@ function wordlist(){
     ...[0,1,2,3,4,5].map(l=>['level'+l,'L'+l+' '+levelNames[l]])
     ].map(([v,l])=>'<button data-filter="'+v+'" class="'+(filter===v?'selected':'')+'">'+l+'</button>').join('')+
   '</div>'+
-  '<div class="panel"><div class="row"><h3>'+ws.length+' 个词条</h3><span class="small muted">点击查看详情</span></div>'+
-  '<div id="wordrows">'+(ws.length?ws.slice(0,200).map(w=>{
+  '<div class="panel"><div class="row"><h3>'+ws.length+' 个词条</h3><span class="small muted">第 '+(wordPage+1)+'/'+totalPages+' 页 · 点击查看详情</span></div>'+
+  '<div id="wordrows">'+(pageWords.length?pageWords.map(w=>{
     const r=state.records[w.id];
-    const statusText=r?(r.status==='mastered'?'熟练':r.status==='recognized'?'认识':r.status==='fuzzy'?'模糊':'学习中'):'未学习';
+    const statusText=r?(r.status==='mastered?'熟练':r.status==='recognized'?'认识':r.status==='fuzzy'?'模糊':'学习中'):'未学习';
     return '<div class="wordrow"><div><button class="linkbtn" style="padding:0;text-align:left" data-detail="'+w.id+'"><strong lang="en">'+esc(w.word)+'</strong></button><small>'+statusText+' · L'+w.level+(w.tags&&w.tags.includes('Core2000')?' · Core2000':'')+'</small></div><span class="small">'+esc(w.partOfSpeech||'')+' '+esc(w.meaning)+'</span><button class="speaker" data-speak="'+esc(w.word)+'">◖))</button></div>';
-  }).join('')+(ws.length>200?'<div class="empty">仅显示前200条，请使用筛选或搜索</div>':''):'<div class="empty">没有找到对应单词。</div>')+'</div></div>';
+  }).join(''):'<div class="empty">没有找到对应单词。</div>')+'</div>'+
+  (totalPages>1?'<div class="row" style="margin-top:16px;justify-content:center;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn outline" data-act="wordPrev" '+(wordPage===0?'disabled':'')+'>← 上一页</button>'+
+    '<span class="small muted" style="align-self:center">第 '+(wordPage+1)+' / '+totalPages+' 页</span>'+
+    '<button class="btn outline" data-act="wordNext" '+(wordPage>=totalPages-1?'disabled':'')+'>下一页 →</button>'+
+  '</div>':'')+'</div>';
 }
 
 function detail(id){
@@ -635,30 +656,44 @@ function reading(){
   const r=READINGS[readingIndex],saved=state.readings[dateKey()+'-'+readingIndex];
   const prev=(readingIndex-1+READINGS.length)%READINGS.length,next=(readingIndex+1)%READINGS.length;
   const nav='<div class="row" style="margin-bottom:16px"><button class="btn outline" data-reading="'+prev+'">← 上一篇</button><span class="badge">第 '+(readingIndex+1)+' / '+READINGS.length+' 篇</span><button class="btn outline" data-reading="'+next+'">下一篇 →</button></div>';
-  return header('阅读训练')+'<div class="learnwrap">'+nav+'<div class="panel"><div class="row"><h2>'+esc(r.title)+'</h2><span class="badge">'+(r.type||'阅读')+'</span></div>'+
-  '<p class="small muted">点击英文单词可查意思。</p>'+
+  // 词汇高亮：已学过的词加class
+  const learnedWords=new Set(Object.keys(state.records||{}).map(id=>{const w=getWord(id);return w?w.word.toLowerCase():''}).filter(Boolean));
+  const highlightWord=w=>{
+    const low=w.toLowerCase();
+    const cls=learnedWords.has(low)?' class="word-known"':'';
+    return '<button data-gloss="'+w+'"'+cls+'>'+w+'</button>';
+  };
+  const formalCount=READINGS.filter(x=>x.level==='D'||x.type==='成考标准').length;
+  const modeToggle='<div class="row" style="margin-bottom:12px"><span class="small muted">模式：</span>'+
+    '<button class="btn '+(readingMode==='study'?'':'outline')+'" data-act="setStudyMode" style="padding:8px 14px;font-size:13px">📖 学习模式（可查词）</button>'+
+    '<button class="btn '+(readingMode==='exam'?'':'outline')+'" data-act="setExamMode" style="padding:8px 14px;font-size:13px">📝 考试模式（禁查词）</button></div>';
+  const renderText=(text)=>readingMode==='exam'&&!saved?text.replace(/\n/g,'<br>'):text.replace(/\n/g,'<br>').replace(/[A-Za-z]+/g,highlightWord);
+  return header('阅读训练','成考标准'+formalCount+'篇 · 基础过渡'+(READINGS.length-formalCount)+'篇 · '+(readingMode==='exam'?'考试模式：提交后可查词和翻译':'学习模式：点击单词查词，已学词高亮'))+'<div class="learnwrap">'+nav+modeToggle+'<div class="panel"><div class="row"><h2>'+esc(r.title)+'</h2><span class="badge">'+(r.type||'阅读')+(r.category?' · '+esc(r.category):'')+'</span></div>'+
+  (readingMode==='exam'&&!saved?'<p class="small muted">考试模式：请独立完成，提交后可查看查词、翻译和解析。</p>':'<p class="small muted">点击英文单词可查意思。<span class="word-known" style="border-bottom:2px solid #26724c;padding:0 2px">绿色下划线</span>表示你已学过的词。</p>')+
   (r.questions&&r.questions.length?
     // 多题模式
-    '<p class="reading" lang="en">'+(r.text||'').replace(/\n/g,'<br>').replace(/[A-Za-z]+/g,w=>'<button data-gloss="'+w+'">'+w+'</button>')+'</p>'+
-    (gloss?'<div class="tip" role="status">'+esc(gloss)+'</div>':'')+
-    '<div class="row"><button class="linkbtn" data-act="translate">'+(translation?'收起':'查看')+'全文翻译</button><button class="speaker" data-speak="'+esc(r.text||'')+'">◖)) 朗读全文</button></div>'+
-    (translation?'<div class="tip">'+esc(r.translation||'')+'</div>':'')+
+    '<p class="reading" lang="en">'+renderText(r.text||'')+'</p>'+
+    (gloss&&(readingMode==='study'||saved)?'<div class="tip" role="status">'+esc(gloss)+'</div>':'')+
+    ((readingMode==='study'||saved)?'<div class="row"><button class="linkbtn" data-act="translate">'+(translation?'收起':'查看')+'全文翻译</button><button class="speaker" data-speak="'+esc(r.text||'')+'">◖)) 朗读全文</button></div>':'')+
+    (translation&&(readingMode==='study'||saved)?'<div class="tip">'+esc(r.translation||'')+'</div>':'')+
     '<div class="reading-questions">'+r.questions.map((q,qi)=>{
       const userAns=saved&&saved.answers?saved.answers[qi]:null;
-      const exp=q.explanation?('<b>['+esc(q.questionType||'')+']</b> 定位：'+esc(q.explanation.location||'')+'<br><b>正确答案：</b>'+esc(q.explanation.correctReason||'')+(q.explanation.wrongA&&q.explanation.wrongA.indexOf('正确答案')<0?'<br>'+esc(q.explanation.wrongA):'')+(q.explanation.wrongB?'<br>'+esc(q.explanation.wrongB):'')+(q.explanation.wrongC?'<br>'+esc(q.explanation.wrongC):'')+(q.explanation.wrongD?'<br>'+esc(q.explanation.wrongD):'')):(q.explain||'');
+      const exp=q.explanation?('<b>['+esc(q.questionType||'')+']</b> 定位：'+esc(q.explanation.location||'')+'<br><b>正确答案：</b>'+esc(q.explanation.correctReason||'')+(q.explanation.wrongA?'<br>A: '+esc(q.explanation.wrongA):'')+(q.explanation.wrongB?'<br>B: '+esc(q.explanation.wrongB):'')+(q.explanation.wrongC?'<br>C: '+esc(q.explanation.wrongC):'')+(q.explanation.wrongD?'<br>D: '+esc(q.explanation.wrongD):'')):(q.explain||'');
       return '<div class="qblock"><h3>'+(qi+1)+'. '+esc(q.question)+'</h3><div class="choicegrid">'+q.options.map((o,i)=>'<button class="choice '+(saved?(i===q.correct?'correct':userAns===i?'wrong':''):'')+'" data-rq="'+readingIndex+'-'+qi+'-'+i+'" '+(saved?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+(saved?'<div class="feedback small">'+exp+'</div>':'')+'</div>';
     }).join('')+'</div>'+
     (!saved?'<div class="answerbar"><button class="btn" data-act="submitReading">提交本篇答案</button></div>':'')
     :
     // 单题模式（兼容旧数据）
-    '<h3>'+esc(r.question)+'</h3><p class="reading" lang="en">'+r.text.replace(/[A-Za-z]+/g,w=>'<button data-gloss="'+w+'">'+w+'</button>')+'</p>'+
+    '<h3>'+esc(r.question)+'</h3><p class="reading" lang="en">'+r.text.replace(/[A-Za-z]+/g,highlightWord)+'</p>'+
     (gloss?'<div class="tip" role="status">'+esc(gloss)+'</div>':'')+
     '<div class="row"><button class="linkbtn" data-act="translate">'+(translation?'收起':'查看')+'全文翻译</button><button class="speaker" data-speak="'+esc(r.text)+'">◖)) 朗读全文</button></div>'+
     (translation?'<div class="tip">'+esc(r.translation||'')+'</div>':'')+
     '<div class="choicegrid">'+(r.options||[]).map((o,i)=>'<button class="choice '+(saved?(i===r.correct?'correct':saved.choice===i?'wrong':''):'')+'" data-reading-choice="'+i+'" '+(saved?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+
     (saved?'<div class="feedback"><b>'+(saved.correct?'答对了！':'正确答案是 '+String.fromCharCode(65+r.correct)+'。')+'</b><br>'+esc(r.explain||'')+'</div>':'')
   )+
-  '</div>'+nav+'<p class="footer">阅读题库正在逐步重建为成考标准难度。</p></div>';
+  '</div>'+nav+
+  '<div class="row" style="margin-top:16px"><button class="btn" data-act="startReadingExam">📝 5篇20题阅读实战</button><span class="small muted">模拟真实考试阅读部分</span></div>'+
+  '<p class="footer">阅读题库正在逐步重建为成考标准难度。</p></div>';
 }
 
 // 阅读答题（多题模式）
@@ -672,9 +707,99 @@ function submitReading(){
   if(!r||!r.questions||!r.questions.length)return;
   const answers=r.questions.map((q,qi)=>readingAnswers[readingIndex+'-'+qi]??-1);
   const correct=answers.filter((a,i)=>a===r.questions[i].correct).length;
-  state.readings[dateKey()+'-'+readingIndex]={correct:correct===r.questions.length,choice:answers[0],answers};
+  state.readings[dateKey()+'-'+readingIndex]={correctCount:correct,total:r.questions.length,correct:correct===r.questions.length,choice:answers[0],answers};
   // 记录阅读中遇到的生词
   save();toast('本篇答对 '+correct+' / '+r.questions.length+' 题');render();
+}
+
+// ===== 5篇20题阅读实战 =====
+let examSession=null;
+function startReadingExam(){
+  const formal=READINGS.filter(r=>r.level==='D'||r.type==='成考标准');
+  if(formal.length<5){toast('成考标准阅读不足5篇，当前'+formal.length+'篇');return;}
+  // 随机选5篇
+  const shuffled=[...formal].sort(()=>Math.random()-0.5).slice(0,5);
+  examSession={
+    articles:shuffled,
+    currentArticle:0,
+    answers:{},
+    startTime:Date.now(),
+    submitted:false
+  };
+  view='readingExam';render();
+}
+function readingExamView(){
+  if(!examSession)return header('阅读实战')+'<div class="panel"><p>请从阅读训练页开始实战。</p></div>';
+  const s=examSession;
+  if(s.submitted){
+    // 结果页
+    let totalCorrect=0,totalQ=0;
+    const typeStats={};
+    s.articles.forEach((art,ai)=>{
+      art.questions.forEach((q,qi)=>{
+        totalQ++;
+        const userAns=s.answers[ai+'-'+qi];
+        if(userAns===q.correct)totalCorrect++;
+        const t=q.questionType||'其他';
+        if(!typeStats[t])typeStats[t]={correct:0,total:0};
+        typeStats[t].total++;
+        if(userAns===q.correct)typeStats[t].correct++;
+      });
+    });
+    const elapsed=Math.round((Date.now()-s.startTime)/1000);
+    const mins=Math.floor(elapsed/60),secs=elapsed%60;
+    return header('阅读实战结果')+'<div class="learnwrap"><div class="panel wordcard">'+
+      '<span class="badge green">已完成</span>'+
+      '<h2 style="margin-top:24px">正确率 '+Math.round(totalCorrect/totalQ*100)+'%</h2>'+
+      '<div class="resultnum">'+totalCorrect+'<span style="font-size:18px"> / '+totalQ+' 题正确</span></div>'+
+      '<p>用时：'+mins+'分'+secs+'秒</p>'+
+      '<h3 style="margin-top:20px">各题型正确率</h3>'+
+      '<div>'+Object.entries(typeStats).map(([t,st])=>'<div class="wordrow"><span>'+esc(t)+'</span><span class="small">'+st.correct+'/'+st.total+' ('+Math.round(st.correct/st.total*100)+'%)</span></div>').join('')+'</div>'+
+      '<h3 style="margin-top:20px">各篇详情</h3>'+
+      '<div>'+s.articles.map((art,ai)=>{
+        const ac=art.questions.filter((q,qi)=>s.answers[ai+'-'+qi]===q.correct).length;
+        return '<div class="wordrow"><span>'+(ai+1)+'. '+esc(art.title)+'</span><span class="small">'+ac+'/'+art.questions.length+'</span></div>';
+      }).join('')+'</div>'+
+      '<div class="answerbar" style="margin-top:24px"><button class="btn" data-act="examBack">返回阅读</button><button class="btn outline" data-act="startReadingExam">再来一次</button></div>'+
+      '</div></div>';
+  }
+  // 做题页
+  const art=s.articles[s.currentArticle];
+  const learnedWords=new Set(Object.keys(state.records||{}).map(id=>{const w=getWord(id);return w?w.word.toLowerCase():''}).filter(Boolean));
+  const highlightWord=w=>{
+    const low=w.toLowerCase();
+    const cls=learnedWords.has(low)?' class="word-known"':'';
+    return '<button data-gloss="'+w+'"'+cls+'>'+w+'</button>';
+  };
+  return header('阅读实战 · 第 '+(s.currentArticle+1)+' / 5 篇')+
+  '<div class="learnwrap"><div class="panel">'+
+  '<div class="row"><h2>'+esc(art.title)+'</h2><span class="badge">'+esc(art.category||'')+'</span></div>'+
+  '<p class="small muted">考试模式：禁止查词，提交后才能查看解析。已学词绿色下划线。</p>'+
+  '<p class="reading" lang="en">'+(art.text||'').replace(/\n/g,'<br>').replace(/[A-Za-z]+/g,highlightWord)+'</p>'+
+  '<div class="reading-questions">'+art.questions.map((q,qi)=>{
+    const userAns=s.answers[s.currentArticle+'-'+qi];
+    return '<div class="qblock"><h3>'+(qi+1)+'. '+esc(q.question)+'</h3><div class="choicegrid">'+q.options.map((o,i)=>'<button class="choice '+(userAns===i?'selected':'')+'" data-examq="'+s.currentArticle+'-'+qi+'-'+i+'">'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div></div>';
+  }).join('')+'</div>'+
+  '<div class="answerbar">'+
+    (s.currentArticle>0?'<button class="btn outline" data-act="examPrev">← 上一篇</button>':'')+
+    '<span class="small">第 '+(s.currentArticle+1)+' / 5 篇</span>'+
+    (s.currentArticle<4?'<button class="btn" data-act="examNext">下一篇 →</button>':'<button class="btn" data-act="examSubmit">提交全部答案</button>')+
+  '</div></div></div>';
+}
+function examAnswer(articleIdx,qIdx,choice){
+  if(!examSession||examSession.submitted)return;
+  examSession.answers[articleIdx+'-'+qIdx]=choice;
+  render();
+}
+function examSubmit(){
+  if(!examSession)return;
+  examSession.submitted=true;
+  // 记录实战成绩
+  if(!state.examHistory)state.examHistory=[];
+  let correct=0,total=0;
+  examSession.articles.forEach((art,ai)=>art.questions.forEach((q,qi)=>{total++;if(examSession.answers[ai+'-'+qi]===q.correct)correct++;}));
+  state.examHistory.push({date:dateKey(),correct,total,time:Math.round((Date.now()-examSession.startTime)/1000)});
+  save();render();
 }
 
 // ===== 长难句（优先使用外部sentences.js数据，否则用内置5句） =====
@@ -818,6 +943,8 @@ function report(){
   const totalReviews=Object.values(state.days).reduce((s,d)=>s+(d.reviews||0),0);
   const totalCorrect=Object.values(state.days).reduce((s,d)=>s+(d.correct||0),0);
   const totalAttempts=Object.values(state.days).reduce((s,d)=>s+(d.attempts||0),0);
+  const readCorrect=read.reduce((s,x)=>s+(x.correctCount!=null?x.correctCount:(x.correct?(x.answers?x.answers.length:1):0)),0);
+  const readTotal=read.reduce((s,x)=>s+(x.total||(x.answers?x.answers.length:1)),0);
   return header('学习报告','只展示真实记录，不预测分数')+
   '<div class="stats">'+
     '<div class="stat"><span>词库覆盖</span><strong>'+Math.round(Object.keys(state.records).length/uniqueWords().length*100)+'%</strong><span>'+Object.keys(state.records).length+' / '+uniqueWords().length+'</span></div>'+
@@ -826,7 +953,7 @@ function report(){
   '</div>'+
   '<div class="panel"><h2>学习统计</h2>'+
   '<p>学习天数：<b>'+totalDays+'</b> 天 · 累计学新词：<b>'+totalNew+'</b> · 累计复习：<b>'+totalReviews+'</b> 次</p>'+
-  '<p>阅读作答：<b>'+read.length+'</b> 篇 · 阅读正确率：<b>'+(read.length?Math.round(read.filter(x=>x.correct).length/read.length*100)+'%':'—')+'</b></p>'+
+  '<p>阅读作答：<b>'+read.length+'</b> 篇 · 答对 <b>'+readCorrect+'</b> / '+readTotal+' 题 · 阅读正确率：<b>'+(readTotal?Math.round(readCorrect/readTotal*100)+'%':'—')+'</b></p>'+
   '<p>易错词：<b>'+weakWordsList().length+'</b> 个</p>'+
   '</div>'+
   '<div class="panel" style="margin-top:18px"><h2>目前建议</h2>'+
@@ -892,7 +1019,7 @@ function bind(){
   document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>actions[b.dataset.act]?.());
   document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>answer(+b.dataset.choice));
   document.querySelectorAll('[data-testchoice]').forEach(b=>b.onclick=()=>testAnswer(+b.dataset.testchoice));
-  document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;render()});
+  document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;wordPage=0;render()});
   document.querySelectorAll('[data-reading]').forEach(b=>b.onclick=()=>{readingIndex=+b.dataset.reading;translation=false;gloss='';readingAnswers={};render()});
   document.querySelectorAll('[data-gloss]').forEach(b=>b.onclick=()=>{gloss=lookup(b.dataset.gloss);render()});
   document.querySelectorAll('[data-reading-choice]').forEach(b=>b.onclick=()=>{
@@ -910,6 +1037,7 @@ function bind(){
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(b.dataset.detail));
   document.querySelectorAll('[data-grammar]').forEach(b=>b.onclick=()=>{grammarCurrentId=b.dataset.grammar;grammarViewMode='detail';render()});
   document.querySelectorAll('[data-gchoice]').forEach(b=>b.onclick=()=>grammarAnswer(+b.dataset.gchoice));
+  document.querySelectorAll('[data-examq]').forEach(b=>b.onclick=()=>{const p=b.dataset.examq.split('-');examAnswer(+p[0],+p[1],+p[2])});
   if($('#search'))$('#search').oninput=e=>{const pos=e.target.selectionStart;query=e.target.value;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
   if($('#settingsform'))$('#settingsform').onsubmit=e=>{
     e.preventDefault();
@@ -988,6 +1116,10 @@ const actions={
     }
   },
   continue20:()=>startQuick(20),
+  wordPrev:()=>{if(wordPage>0){wordPage--;render()}},
+  wordNext:()=>{wordPage++;render()},
+  setStudyMode:()=>{readingMode='study';render()},
+  setExamMode:()=>{readingMode='exam';translation=false;gloss='';render()},
   continue50:()=>startQuick(50),
   continue100:()=>startQuick(100),
   freeLearn:()=>{view='words';filter='unlearned';render()},
@@ -1006,7 +1138,12 @@ const actions={
   grammarNext:()=>{
     if(!grammarSession||!grammarSession.feedback)return;
     grammarSession.index++;grammarSession.feedback=null;render();
-  }
+  },
+  startReadingExam:()=>startReadingExam(),
+  examNext:()=>{if(examSession&&examSession.currentArticle<4){examSession.currentArticle++;render();}},
+  examPrev:()=>{if(examSession&&examSession.currentArticle>0){examSession.currentArticle--;render();}},
+  examSubmit:()=>examSubmit(),
+  examBack:()=>{examSession=null;view='reading';render();}
 };
 
 function grammarAnswer(i){
