@@ -1311,7 +1311,7 @@ function bind(){
 }
 
 // ===== 动作 =====
-const actions={
+const actions={saveWriting:()=>{const x=document.querySelector('#writingAnswer');if(x){state.writingDraft=x.value;save();toast('写作草稿已保存')}},
   startQuick:()=>startQuick(),
   startReview:()=>startReview(),
   startTest:()=>startTest(20),
@@ -1441,4 +1441,5 @@ document.addEventListener('keydown',e=>{
 });
 
 // 初始化
+function writingView(){const items=typeof WRITING_DATA!=='undefined'?WRITING_DATA:[];const x=items[0];return header('短文写作','按成考常见应用文练习')+`<div class="learnwrap"><div class="panel"><h2>${x?esc(x.title):'写作练习'}</h2><p class="muted">先看写作任务，再用自己的话完成。提交前先检查时间、人物和语气。</p><div class="tip">写作建议：先列3个要点，再写开头、主体和结尾。不要逐字翻译中文。</div><textarea id="writingAnswer" rows="10" placeholder="在这里写下你的英文短文……" style="width:100%;margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:10px"></textarea><div class="answerbar"><button class="btn" data-act="saveWriting">保存草稿</button></div></div></div>`}
 render();
