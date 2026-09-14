@@ -19,3 +19,10 @@
 .reading-questions .qblock{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #eee;}
 .reading-questions .qblock:last-child{border-bottom:none;}
 .resultnum{font-size:48px;font-weight:700;color:#26724c;margin:16px 0;}
+
+/* 完形填空 */
+.cloze-blank{display:inline-block;min-width:40px;padding:2px 8px;margin:0 2px;border:1px dashed #26724c;border-radius:4px;background:#fff;color:#26724c;font-weight:600;cursor:pointer;font-size:inherit;}
+.cloze-blank:hover{background:rgba(38,114,76,0.08);}
+.cloze-blank.correct{background:#d4edda;border-color:#28a745;color:#155724;}
+.cloze-blank.wrong{background:#f8d7da;border-color:#dc3545;color:#721c24;}
+.cloze-text{line-height:2.2;}

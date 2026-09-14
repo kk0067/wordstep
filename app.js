@@ -218,6 +218,7 @@ const navs=[
   ['test','✎','词汇测试'],
   ['words','▤','我的词库'],
   ['reading','▧','阅读训练'],
+  ['cloze','▦','完形填空'],
   ['sentence','⌁','长难句'],
   ['grammar','§','语法'],
   ['report','▥','学习报告'],
@@ -231,7 +232,7 @@ function header(title,sub='河南成人高考 · 专升本英语 · 30天冲刺'
 }
 
 function render(){
-  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,readingExam:readingExamView,sentence:sentence,grammar:grammarView,report:report,settings:settings}[view]||home)()+'</main></div>';
+  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,readingExam:readingExamView,cloze:clozeView,sentence:sentence,grammar:grammarView,report:report,settings:settings}[view]||home)()+'</main></div>';
   bind();
 }
 
@@ -281,6 +282,12 @@ function home(){
     '<div class="ring" style="--progress:'+Math.min(100,t.new/goal*100)+'%"><div><b>'+t.new+'<span class="muted" style="font-size:18px"> / '+goal+'</span></b><small>新词已接触</small></div></div>'+
     (t.new>=goal?'<p class="small" style="text-align:center;color:#26724c"><b>🎉 今日目标已完成！</b><br>可以继续学习更多</p>':'<p class="small muted" style="text-align:center">学过不等于记住<br>复习才是关键</p>')+
     (t.new>=goal?'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"><button class="btn soft" data-act="continue20">+20词</button><button class="btn soft" data-act="continue50">+50词</button><button class="btn soft" data-act="continue100">+100词</button><button class="btn outline" data-act="freeLearn">自由学习</button></div>':'')+
+    '</div>'+
+
+    '<div class="panel" style="margin-top:18px"><div class="row"><h3>今日复习进度</h3><span class="badge">'+t.reviews+' 次</span></div>'+
+    '<div class="progress" style="margin:12px 0"><div style="width:'+Math.min(100,d>0?t.reviews/Math.max(1,d)*100:100)+'%"></div></div>'+
+    '<p class="small muted">到期复习 <b>'+d+'</b> 个 · 已复习 <b>'+t.reviews+'</b> 次'+(d>0?' · 还有 <b>'+Math.max(0,d-t.reviews)+'</b> 个待复习':' · 今日复习已完成 ✓')+'</p>'+
+    (d>0?'<button class="btn soft" data-act="startReview" style="margin-top:10px;width:100%">↻ 开始复习</button>':'')+
     '</div>'+
 
     '<div class="panel note"><span class="badge">核心数据</span>'+
@@ -612,7 +619,7 @@ function wordlist(){
   '<div class="panel"><div class="row"><h3>'+ws.length+' 个词条</h3><span class="small muted">第 '+(wordPage+1)+'/'+totalPages+' 页 · 点击查看详情</span></div>'+
   '<div id="wordrows">'+(pageWords.length?pageWords.map(w=>{
     const r=state.records[w.id];
-    const statusText=r?(r.status==='mastered?'熟练':r.status==='recognized'?'认识':r.status==='fuzzy'?'模糊':'学习中'):'未学习';
+    const statusText=r?(r.status==='mastered'?'熟练':r.status==='recognized'?'认识':r.status==='fuzzy'?'模糊':'学习中'):'未学习';
     return '<div class="wordrow"><div><button class="linkbtn" style="padding:0;text-align:left" data-detail="'+w.id+'"><strong lang="en">'+esc(w.word)+'</strong></button><small>'+statusText+' · L'+w.level+(w.tags&&w.tags.includes('Core2000')?' · Core2000':'')+'</small></div><span class="small">'+esc(w.partOfSpeech||'')+' '+esc(w.meaning)+'</span><button class="speaker" data-speak="'+esc(w.word)+'">◖))</button></div>';
   }).join(''):'<div class="empty">没有找到对应单词。</div>')+'</div>'+
   (totalPages>1?'<div class="row" style="margin-top:16px;justify-content:center;gap:8px;flex-wrap:wrap">'+
@@ -802,6 +809,63 @@ function examSubmit(){
   save();render();
 }
 
+// ===== 完形填空 =====
+const CLOZE_TESTS=(typeof CLOZE_DATA!=="undefined"&&Array.isArray(CLOZE_DATA)&&CLOZE_DATA.length)?CLOZE_DATA:[];
+let clozeIndex=0,clozeAnswers={},clozeSubmitted=false;
+function clozeView(){
+  if(!CLOZE_TESTS.length){
+    return header('完形填空')+'<div class="panel"><h2>完形填空</h2><p class="muted">完形填空题库正在建设中。将按成考标准：约200词、15空、4选1，考查上下文/词义辨析/固定搭配/连接关系/语法/逻辑。</p><h3 style="margin-top:20px">即将上线</h3><div style="display:flex;gap:8px;flex-wrap:wrap">'+['教育','工作','健康','科技','环境','文化','社会','人物','心理','生活'].map(t=>'<span class="word-chip">'+t+'</span>').join('')+'</div></div>';
+  }
+  const c=CLOZE_TESTS[clozeIndex];
+  const saved=state.clozes?state.clozes[c.id]:null;
+  const prev=(clozeIndex-1+CLOZE_TESTS.length)%CLOZE_TESTS.length,next=(clozeIndex+1)%CLOZE_TESTS.length;
+  const nav='<div class="row" style="margin-bottom:16px"><button class="btn outline" data-cloze="'+prev+'">← 上一篇</button><span class="badge">第 '+(clozeIndex+1)+' / '+CLOZE_TESTS.length+' 篇</span><button class="btn outline" data-cloze="'+next+'">下一篇 →</button></div>';
+  // 渲染文章，空格用按钮替换
+  const renderText=(text)=>{
+    return text.replace(/___(\d+)___/g,(m,n)=>{
+      const blank=c.blanks.find(b=>b.index===+n);
+      if(!blank)return m;
+      const userAns=clozeSubmitted?(clozeAnswers[n]??-1):(clozeAnswers[n]??-1);
+      const isCorrect=clozeSubmitted&&userAns===blank.correct;
+      const isWrong=clozeSubmitted&&userAns!==blank.correct&&userAns>=0;
+      return '<button class="cloze-blank '+(isCorrect?'correct':isWrong?'wrong':'')+'" data-clozeblank="'+n+'">'+(userAns>=0?String.fromCharCode(65+userAns):'___'+n+'___')+'</button>';
+    });
+  };
+  return header('完形填空','成考标准 · 约200词 · 15空 · 4选1')+'<div class="learnwrap">'+nav+'<div class="panel">'+
+  '<div class="row"><h2>'+esc(c.title)+'</h2><span class="badge">'+esc(c.category||'')+'</span></div>'+
+  '<p class="small muted">点击空格选择答案。提交后查看解析。</p>'+
+  '<p class="reading cloze-text" lang="en">'+renderText(c.text)+'</p>'+
+  // 当前选中空格的选项
+  (clozeCurrentBlank?(()=>{
+    const b=c.blanks.find(x=>x.index===clozeCurrentBlank);
+    if(!b)return '';
+    return '<div class="panel" style="margin-top:16px;background:#f8f9fa"><h4>第 '+b.index+' 空 <span class="badge">'+esc(b.testType||'')+'</span></h4><div class="choicegrid">'+b.options.map((o,i)=>'<button class="choice '+(clozeAnswers[b.index]===i?'selected':'')+(clozeSubmitted?(i===b.correct?'correct':clozeAnswers[b.index]===i?'wrong':''):'')+'" data-clozechoice="'+b.index+'-'+i+'" '+(clozeSubmitted?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+(clozeSubmitted?'<div class="feedback small"><b>正确答案：'+String.fromCharCode(65+b.correct)+'</b><br>'+esc(b.explanation||'')+'</div>':'')+'</div>';
+  })():'')+
+  (!clozeSubmitted?'<div class="answerbar"><button class="btn" data-act="submitCloze">提交本篇答案</button></div>':
+  '<div class="answerbar"><button class="btn outline" data-act="resetCloze">重新做</button></div>')+
+  '</div>'+nav+'</div>';
+}
+let clozeCurrentBlank=null;
+function answerCloze(blankIdx,choice){
+  if(clozeSubmitted)return;
+  clozeAnswers[blankIdx]=choice;
+  clozeCurrentBlank=blankIdx;
+  render();
+}
+function submitCloze(){
+  const c=CLOZE_TESTS[clozeIndex];
+  if(!c)return;
+  clozeSubmitted=true;
+  let correct=0;
+  c.blanks.forEach(b=>{if(clozeAnswers[b.index]===b.correct)correct++;});
+  if(!state.clozes)state.clozes={};
+  state.clozes[c.id]={correct,total:c.blanks.length,answers:{...clozeAnswers},date:dateKey()};
+  save();toast('本篇答对 '+correct+' / '+c.blanks.length+' 空');render();
+}
+function resetCloze(){
+  clozeAnswers={};clozeSubmitted=false;clozeCurrentBlank=null;render();
+}
+
 // ===== 长难句（优先使用外部sentences.js数据，否则用内置5句） =====
 const _BUILTIN_SENTENCES=[
   {en:'Although many people believe that technology makes life easier, some researchers argue that it can also create new forms of stress.',zh:'虽然许多人认为技术让生活更容易，但一些研究者认为它也会带来新的压力。',structure:'主句：some researchers argue。Although引导让步状语从句；两个that引导宾语从句。',grammar:'让步状语从句 + 宾语从句'},
@@ -854,12 +918,60 @@ function showSentenceDetail(type){
 // ===== 语法系统框架 =====
 // 语法点数据（优先从外部grammar.js加载，否则用占位）
 const _GRAMMAR_PLACEHOLDER=[
-  {id:"g01",title:"一般现在时",category:"时态",frequency:10,level:1,explanation:"表示经常发生的动作或存在的状态。关键词：always, usually, often, sometimes, every day。第三人称单数动词加s/es。",examples:[{en:"She works in a hospital.",zh:"她在医院工作。"},{en:"They usually go to school by bus.",zh:"他们通常坐公交上学。"}],breakdown:"先找主语：She/They。再找动词：works/go。第三人称单数she用works，复数they用原形go。",examTip:"成考常考第三人称单数变化，以及时间标志词判断时态。",commonMistakes:["忘记第三人称单数加s","把一般现在时和现在进行时混淆"],basicQuestions:[],examQuestions:[]},
-  {id:"g02",title:"一般过去时",category:"时态",frequency:9,level:1,explanation:"表示过去某个时间发生的动作或存在的状态。关键词：yesterday, last week, ago, in 2020。规则动词加ed，不规则动词需记忆。",examples:[{en:"He went to Beijing yesterday.",zh:"他昨天去了北京。"},{en:"We visited the museum last week.",zh:"我们上周参观了博物馆。"}],breakdown:"先找时间标志：yesterday/last week → 用过去时。动词go→went，visit→visited。",examTip:"成考常考不规则动词的过去式，以及时间状语与时态的对应。",commonMistakes:["不规则动词过去式记错","在过去时中仍用动词原形"],basicQuestions:[],examQuestions:[]},
-  {id:"g03",title:"定语从句",category:"从句",frequency:9,level:2,explanation:"用一个句子修饰名词或代词。先行词是人用who/that，是物用which/that，是谁的用whose，是地点用where，是时间用when。技巧：先把中间修饰部分拿掉，找出主句的'谁+做什么'。",examples:[{en:"The book that I bought yesterday is very interesting.",zh:"我昨天买的那本书很有趣。"},{en:"The man who is standing there is my teacher.",zh:"站在那里的那个人是我的老师。"}],breakdown:"主句：The book is very interesting。that I bought yesterday是定语从句，修饰book。先拿掉中间部分，主句就清楚了。",examTip:"成考阅读中大量出现定语从句，看懂它就能看懂长句。语法题常考关系词的选择。",commonMistakes:["关系词用错（who/which/where混淆）","把定语从句当成两个独立句子"],basicQuestions:[],examQuestions:[]},
-  {id:"g04",title:"宾语从句",category:"从句",frequency:8,level:2,explanation:"用一个句子作动词的宾语。引导词：that（陈述事实，可省略）、if/whether（是否）、what/when/where/why/how（疑问词）。注意：从句用陈述语序，时态与主句呼应。",examples:[{en:"I think that English is important.",zh:"我认为英语很重要。"},{en:"She asked me where I lived.",zh:"她问我住在哪里。"}],breakdown:"主句：I think / She asked me。后面that/where引导的句子是宾语，作think/asked的宾语。注意where I lived是陈述语序，不是where did I live。",examTip:"成考常考宾语从句的语序（陈述语序）和时态呼应。",commonMistakes:["宾语从句用疑问语序","时态不与主句呼应"],basicQuestions:[],examQuestions:[]},
-  {id:"g05",title:"被动语态",category:"语态",frequency:8,level:2,explanation:"主语是动作的承受者。结构：be + 过去分词。各种时态的被动：am/is/are + done（一般现在），was/were + done（一般过去），will be + done（一般将来），can/must be + done（情态动词）。",examples:[{en:"English is spoken all over the world.",zh:"全世界都说英语。"},{en:"The bridge was built in 1990.",zh:"这座桥建于1990年。"}],breakdown:"主动：People speak English. → 被动：English is spoken (by people)。宾语English变主语，动词加be+done。",examTip:"成考常考各种时态的被动结构，以及by短语的用法。",commonMistakes:["忘记be动词","过去分词写错"],basicQuestions:[],examQuestions:[]},
-  {id:"g06",title:"非谓语动词",category:"非谓语",frequency:9,level:3,explanation:"不作谓语的动词形式：不定式(to do)、动名词(doing)、分词(doing/done)。不定式表目的或将来；动名词作主语/宾语；现在分词表主动进行；过去分词表被动完成。",examples:[{en:"I want to learn English well.",zh:"我想学好英语。"},{en:"Swimming is good for health.",zh:"游泳对健康有益。"},{en:"The boy standing there is my brother.",zh:"站在那里的男孩是我弟弟。"}],breakdown:"to learn是want的宾语（不定式）；Swimming是主语（动名词）；standing there修饰boy（现在分词，主动）。",examTip:"成考语法题重点，常考某些动词后接to do还是doing，以及分词作定语。",commonMistakes:["enjoy/finish/practice后接to do（应该是doing）","现在分词和过去分词混淆"],basicQuestions:[],examQuestions:[]}
+  {id:"g01",title:"一般现在时",category:"时态",frequency:10,level:1,explanation:"表示经常发生的动作或存在的状态。关键词：always, usually, often, sometimes, every day。第三人称单数动词加s/es。",examples:[{en:"She works in a hospital.",zh:"她在医院工作。"},{en:"They usually go to school by bus.",zh:"他们通常坐公交上学。"}],breakdown:"先找主语：She/They。再找动词：works/go。第三人称单数she用works，复数they用原形go。",examTip:"成考常考第三人称单数变化，以及时间标志词判断时态。",commonMistakes:["忘记第三人称单数加s","把一般现在时和现在进行时混淆"],basicQuestions:[
+    {question:"She ___ to school every day.",options:["go","goes","going","went"],correct:1,type:"基础题",explanation:"主语she是第三人称单数，every day表示经常性动作，用一般现在时，动词加es→goes。"},
+    {question:"They ___ football on weekends.",options:["play","plays","playing","played"],correct:0,type:"基础题",explanation:"主语they是复数，on weekends表示经常性，用一般现在时，动词用原形play。"},
+    {question:"My father ___ in a hospital.",options:["work","works","working","worked"],correct:1,type:"基础题",explanation:"主语my father是第三人称单数，用一般现在时，动词加s→works。"}
+  ],examQuestions:[
+    {question:"The sun ___ in the east.",options:["rise","rises","rose","rising"],correct:1,type:"成考题",explanation:"太阳从东方升起是客观真理，用一般现在时。主语the sun是第三人称单数，动词加s→rises。"},
+    {question:"Water ___ at 100 degrees Celsius.",options:["boil","boils","boiled","boiling"],correct:1,type:"成考题",explanation:"水在100度沸腾是客观事实，用一般现在时。water不可数，视为第三人称单数，动词加s→boils。"},
+    {question:"He ___ his homework before dinner every day.",options:["finish","finishes","finished","finishing"],correct:1,type:"成考题",explanation:"every day表示经常性，主语he是第三人称单数，一般现在时动词加es→finishes。"}
+  ]},
+  {id:"g02",title:"一般过去时",category:"时态",frequency:9,level:1,explanation:"表示过去某个时间发生的动作或存在的状态。关键词：yesterday, last week, ago, in 2020。规则动词加ed，不规则动词需记忆。",examples:[{en:"He went to Beijing yesterday.",zh:"他昨天去了北京。"},{en:"We visited the museum last week.",zh:"我们上周参观了博物馆。"}],breakdown:"先找时间标志：yesterday/last week → 用过去时。动词go→went，visit→visited。",examTip:"成考常考不规则动词的过去式，以及时间状语与时态的对应。",commonMistakes:["不规则动词过去式记错","在过去时中仍用动词原形"],basicQuestions:[
+    {question:"I ___ to the park yesterday.",options:["go","goes","went","going"],correct:2,type:"基础题",explanation:"yesterday是过去时间标志，go的过去式是went。"},
+    {question:"She ___ a letter last night.",options:["write","writes","wrote","writing"],correct:2,type:"基础题",explanation:"last night表示过去，write的过去式是wrote。"},
+    {question:"They ___ in Beijing two years ago.",options:["live","lives","lived","living"],correct:2,type:"基础题",explanation:"two years ago表示过去，live是规则动词，过去式加d→lived。"}
+  ],examQuestions:[
+    {question:"He ___ his keys yesterday and couldn't open the door.",options:["lose","loses","lost","losing"],correct:2,type:"成考题",explanation:"yesterday表示过去，lose的过去式是lost（不规则）。"},
+    {question:"The meeting ___ at 3 o'clock last Friday.",options:["begin","begins","began","beginning"],correct:2,type:"成考题",explanation:"last Friday表示过去，begin的过去式是began（不规则）。"},
+    {question:"She ___ English very well when she was young.",options:["speak","speaks","spoke","speaking"],correct:2,type:"成考题",explanation:"when she was young表示过去时间，speak的过去式是spoke（不规则）。"}
+  ]},
+  {id:"g03",title:"定语从句",category:"从句",frequency:9,level:2,explanation:"用一个句子修饰名词或代词。先行词是人用who/that，是物用which/that，是谁的用whose，是地点用where，是时间用when。技巧：先把中间修饰部分拿掉，找出主句的'谁+做什么'。",examples:[{en:"The book that I bought yesterday is very interesting.",zh:"我昨天买的那本书很有趣。"},{en:"The man who is standing there is my teacher.",zh:"站在那里的那个人是我的老师。"}],breakdown:"主句：The book is very interesting。that I bought yesterday是定语从句，修饰book。先拿掉中间部分，主句就清楚了。",examTip:"成考阅读中大量出现定语从句，看懂它就能看懂长句。语法题常考关系词的选择。",commonMistakes:["关系词用错（who/which/where混淆）","把定语从句当成两个独立句子"],basicQuestions:[
+    {question:"The man ___ is standing there is my teacher.",options:["who","which","where","when"],correct:0,type:"基础题",explanation:"先行词the man是人，关系词用who。"},
+    {question:"The book ___ I bought yesterday is interesting.",options:["who","which","where","when"],correct:1,type:"基础题",explanation:"先行词the book是物，关系词用which（或that）。"},
+    {question:"This is the school ___ I studied.",options:["who","which","where","when"],correct:2,type:"基础题",explanation:"先行词the school是地点，关系词用where（=in which）。"}
+  ],examQuestions:[
+    {question:"I will never forget the day ___ I first came to this city.",options:["which","who","when","where"],correct:2,type:"成考题",explanation:"先行词the day是时间，关系词用when（=on which）。"},
+    {question:"The girl ___ mother is a doctor studies very hard.",options:["who","whose","which","whom"],correct:1,type:"成考题",explanation:"表示'谁的'，关系词用whose。the girl's mother = whose mother。"},
+    {question:"This is the best film ___ I have ever seen.",options:["which","that","who","whose"],correct:1,type:"成考题",explanation:"先行词被最高级the best修饰时，关系词只能用that，不能用which。"}
+  ]},
+  {id:"g04",title:"宾语从句",category:"从句",frequency:8,level:2,explanation:"用一个句子作动词的宾语。引导词：that（陈述事实，可省略）、if/whether（是否）、what/when/where/why/how（疑问词）。注意：从句用陈述语序，时态与主句呼应。",examples:[{en:"I think that English is important.",zh:"我认为英语很重要。"},{en:"She asked me where I lived.",zh:"她问我住在哪里。"}],breakdown:"主句：I think / She asked me。后面that/where引导的句子是宾语，作think/asked的宾语。注意where I lived是陈述语序，不是where did I live。",examTip:"成考常考宾语从句的语序（陈述语序）和时态呼应。",commonMistakes:["宾语从句用疑问语序","时态不与主句呼应"],basicQuestions:[
+    {question:"I think ___ English is important.",options:["that","what","when","where"],correct:0,type:"基础题",explanation:"后面是陈述事实，引导词用that（可省略）。"},
+    {question:"She asked me ___ I lived.",options:["that","where","when","what"],correct:1,type:"基础题",explanation:"问「住在哪里」，引导词用where。注意从句用陈述语序where I lived。"},
+    {question:"Do you know ___ he will come?",options:["if","that","what","which"],correct:0,type:"基础题",explanation:"问「是否」，引导词用if或whether。"}
+  ],examQuestions:[
+    {question:"Could you tell me ___?",options:["where does he live","where he lives","where he live","where did he live"],correct:1,type:"成考题",explanation:"宾语从句必须用陈述语序：主语he+谓语lives，不能用does he live。he是第三人称单数，用lives。"},
+    {question:"I don't know ___ he will arrive.",options:["when","when will","when does","that when"],correct:0,type:"成考题",explanation:"宾语从句用陈述语序，引导词when后直接跟主语he+谓语will arrive，不能加will/does。"},
+    {question:"She asked me ___ I had finished my homework.",options:["that","if","what","which"],correct:1,type:"成考题",explanation:"问「是否完成了作业」，引导词用if或whether。主句是过去时asked，从句用过去完成时had finished表示「过去的过去」。"}
+  ]},
+  {id:"g05",title:"被动语态",category:"语态",frequency:8,level:2,explanation:"主语是动作的承受者。结构：be + 过去分词。各种时态的被动：am/is/are + done（一般现在），was/were + done（一般过去），will be + done（一般将来），can/must be + done（情态动词）。",examples:[{en:"English is spoken all over the world.",zh:"全世界都说英语。"},{en:"The bridge was built in 1990.",zh:"这座桥建于1990年。"}],breakdown:"主动：People speak English. → 被动：English is spoken (by people)。宾语English变主语，动词加be+done。",examTip:"成考常考各种时态的被动结构，以及by短语的用法。",commonMistakes:["忘记be动词","过去分词写错"],basicQuestions:[
+    {question:"English ___ all over the world.",options:["speak","speaks","is spoken","spoke"],correct:2,type:"基础题",explanation:"English是动作的承受者（被说），用被动语态。一般现在时被动：is+过去分词spoken。"},
+    {question:"The bridge ___ in 1990.",options:["build","builds","was built","built"],correct:2,type:"基础题",explanation:"bridge是被建造的，用被动。in 1990是过去时间，一般过去时被动：was+过去分词built。"},
+    {question:"The room ___ every day.",options:["clean","cleans","is cleaned","cleaned"],correct:2,type:"基础题",explanation:"room是被打扫的，用被动。every day表示经常性，一般现在时被动：is+过去分词cleaned。"}
+  ],examQuestions:[
+    {question:"The letter ___ yesterday.",options:["was sent","is sent","sent","sends"],correct:0,type:"成考题",explanation:"letter是被寄出的，用被动。yesterday是过去时间，一般过去时被动：was+过去分词sent。"},
+    {question:"These books ___ to the library last week.",options:["return","returned","were returned","are returned"],correct:2,type:"成考题",explanation:"books是被归还的，用被动。last week是过去时间，主语是复数，一般过去时被动：were+过去分词returned。"},
+    {question:"The new hospital ___ next year.",options:["will build","will be built","builds","built"],correct:1,type:"成考题",explanation:"hospital是被建造的，用被动。next year是将来时间，一般将来时被动：will be+过去分词built。"}
+  ]},
+  {id:"g06",title:"非谓语动词",category:"非谓语",frequency:9,level:3,explanation:"不作谓语的动词形式：不定式(to do)、动名词(doing)、分词(doing/done)。不定式表目的或将来；动名词作主语/宾语；现在分词表主动进行；过去分词表被动完成。",examples:[{en:"I want to learn English well.",zh:"我想学好英语。"},{en:"Swimming is good for health.",zh:"游泳对健康有益。"},{en:"The boy standing there is my brother.",zh:"站在那里的男孩是我弟弟。"}],breakdown:"to learn是want的宾语（不定式）；Swimming是主语（动名词）；standing there修饰boy（现在分词，主动）。",examTip:"成考语法题重点，常考某些动词后接to do还是doing，以及分词作定语。",commonMistakes:["enjoy/finish/practice后接to do（应该是doing）","现在分词和过去分词混淆"],basicQuestions:[
+    {question:"I want ___ English well.",options:["learn","to learn","learning","learned"],correct:1,type:"基础题",explanation:"want后面接不定式to do作宾语：want to learn。"},
+    {question:"___ is good for health.",options:["Swim","Swims","Swimming","Swam"],correct:2,type:"基础题",explanation:"动词作主语时要用动名词形式doing：Swimming is good for health。"},
+    {question:"He enjoys ___ books.",options:["read","to read","reading","reads"],correct:2,type:"基础题",explanation:"enjoy后面接动名词doing作宾语：enjoy reading。类似的还有finish, practice, mind, suggest。"}
+  ],examQuestions:[
+    {question:"She decided ___ abroad for further study.",options:["go","to go","going","went"],correct:1,type:"成考题",explanation:"decide后面接不定式to do：decide to go。类似的还有want, hope, plan, promise, refuse。"},
+    {question:"The boy ___ under the tree is my brother.",options:["stand","stands","standing","stood"],correct:2,type:"成考题",explanation:"standing under the tree是现在分词短语作定语，修饰the boy，表示主动进行（男孩正站在树下）。"},
+    {question:"I look forward to ___ you soon.",options:["see","seeing","saw","seen"],correct:1,type:"成考题",explanation:"look forward to中的to是介词，后面接动名词doing：look forward to seeing。类似的还有be used to（习惯于）, devote to。"}
+  ]}
 ];
 const GRAMMAR_TOPICS=(typeof GRAMMAR_DATA!=="undefined"&&Array.isArray(GRAMMAR_DATA)&&GRAMMAR_DATA.length)?GRAMMAR_DATA:_GRAMMAR_PLACEHOLDER;
 let grammarViewMode='list',grammarCurrentId=null,grammarSession=null;
@@ -1038,6 +1150,9 @@ function bind(){
   document.querySelectorAll('[data-grammar]').forEach(b=>b.onclick=()=>{grammarCurrentId=b.dataset.grammar;grammarViewMode='detail';render()});
   document.querySelectorAll('[data-gchoice]').forEach(b=>b.onclick=()=>grammarAnswer(+b.dataset.gchoice));
   document.querySelectorAll('[data-examq]').forEach(b=>b.onclick=()=>{const p=b.dataset.examq.split('-');examAnswer(+p[0],+p[1],+p[2])});
+  document.querySelectorAll('[data-cloze]').forEach(b=>b.onclick=()=>{clozeIndex=+b.dataset.cloze;clozeAnswers={};clozeSubmitted=false;clozeCurrentBlank=null;render()});
+  document.querySelectorAll('[data-clozeblank]').forEach(b=>b.onclick=()=>{clozeCurrentBlank=+b.dataset.clozeblank;render()});
+  document.querySelectorAll('[data-clozechoice]').forEach(b=>b.onclick=()=>{const p=b.dataset.clozechoice.split('-');answerCloze(+p[0],+p[1])});
   if($('#search'))$('#search').oninput=e=>{const pos=e.target.selectionStart;query=e.target.value;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
   if($('#settingsform'))$('#settingsform').onsubmit=e=>{
     e.preventDefault();
@@ -1143,7 +1258,9 @@ const actions={
   examNext:()=>{if(examSession&&examSession.currentArticle<4){examSession.currentArticle++;render();}},
   examPrev:()=>{if(examSession&&examSession.currentArticle>0){examSession.currentArticle--;render();}},
   examSubmit:()=>examSubmit(),
-  examBack:()=>{examSession=null;view='reading';render();}
+  examBack:()=>{examSession=null;view='reading';render();},
+  submitCloze:()=>submitCloze(),
+  resetCloze:()=>resetCloze()
 };
 
 function grammarAnswer(i){
