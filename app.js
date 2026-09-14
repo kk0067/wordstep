@@ -392,7 +392,7 @@ function startQuick(count){
     ws=ws.concat(weakWordsList().slice(0,20));
   }
   if(!ws.length){toast('暂时没有可学习的词，可以去复习或阅读。');return}
-  state.session={mode:'quick',queue:ws.map(w=>({id:w.id,stage:'recognition',rating:null,openTabs:['meaning','example','collocation','usage']})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
+  state.session={mode:'quick',queue:ws.map(w=>({id:w.id,stage:'choice',options:null,choice:-1,openTabs:['meaning','example','collocation','usage']})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
   save();view='quick';render();
 }
 
@@ -478,7 +478,7 @@ function quickLearn(){
     return header('快速背词')+'<div class="panel"><p>选择每次学习的词数：</p>'+
       '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
       [20,50,80,100,120,150].map(n=>'<button class="btn" data-act="quick'+n+'">'+n+' 词</button>').join('')+
-      '</div><p class="muted small" style="margin-top:16px">看到单词后只判断“认识、模糊、不认识”。模糊或不认识时会立即显示释义、例句、搭配和考试用法。</p></div>';
+      '</div><p class="muted small" style="margin-top:16px">先选择这个单词的中文意思，再进入详解并按真实掌握程度评级。</p></div>';
   }
   const item=s.queue[0];
   if(!item){
@@ -499,8 +499,9 @@ function quickLearn(){
   const total=s.done+s.queue.length;
   const progressPct=Math.min(100,s.done/total*100);
 
-  // 阶段一：只判断熟悉度，不再做中文释义选择题
-  if(item.stage==='recognition'){
+  // 阶段一：选择中文意思
+  if(item.stage==='choice'){
+    if(!item.options){item.options=choices(w).map(o=>({id:o.id,meaning:o.meaning}));}
     return header('快速背词 · '+s.done+' / '+total)+
     '<div class="learnwrap">'+
       '<div class="row small muted"><button class="linkbtn" data-nav="home">← 暂停</button><span>已完成 '+s.done+' · 还剩 '+s.queue.length+'</span></div>'+
@@ -511,19 +512,15 @@ function quickLearn(){
         '<div class="phonetic" style="font-size:20px">'+esc(w.phonetic||'')+'</div>'+
         '<div class="pos" style="margin-bottom:8px">'+esc(w.partOfSpeech||'')+'</div>'+
         '<button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button>'+
-        '<p class="muted small" style="margin:20px 0 12px">看到这个词，你能马上想起意思和用法吗？</p>'+
-        '<div class="answerbar">'+
-          '<button class="btn" style="background:#26724c" data-act="quickKnow">✓ 认识</button>'+ 
-          '<button class="btn" style="background:#d4930a" data-act="quickFuzzy">~ 模糊</button>'+ 
-          '<button class="btn" style="background:#b44529" data-act="quickUnknown">✗ 不认识</button>'+ 
-        '</div>'+ 
-        '<button class="linkbtn" style="margin-top:14px" data-act="quickShowDetail">先看讲解再判断</button>'+
+        '<p class="muted small" style="margin:20px 0 12px">请选择这个单词最常见的中文意思：</p>'+ 
+        '<div class="choicegrid">'+item.options.map((o,i)=>'<button class="choice" data-quickchoice="'+i+'" style="font-size:16px;padding:16px">'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+'</button>').join('')+'</div>'+ 
       '</div>'+
     '</div>';
   }
 
   // 阶段二：详解 + 评级
   const study=wordStudyContent(w);
+  const choseCorrect=item.options&&item.options[item.choice]&&item.options[item.choice].id===w.id;
   const open=item.openTabs||['meaning'];
   const tab=(key,label,content)=>{
     const isOpen=open.includes(key);
@@ -544,7 +541,7 @@ function quickLearn(){
     '<div class="progress"><div style="width:'+progressPct+'%"></div></div>'+
     '<div class="panel wordcard">'+
       '<div class="row"><div><div class="word" lang="en" style="font-size:36px">'+esc(w.word)+'</div><div class="phonetic">'+esc(w.phonetic||'')+' · '+esc(w.partOfSpeech||'')+'</div></div><button class="speaker" data-speak="'+esc(w.word)+'">◖))</button></div>'+
-      '<div style="background:#fff7e8;color:#7a5310;border-radius:10px;padding:10px 14px;font-weight:600;margin:12px 0 4px">'+(item.rating==='fuzzy'?'有印象但不确定：重点看搭配和例句':item.rating==='unknown'?'暂时不认识：现在看懂即可，系统会尽快再安排': '先看讲解，再按真实情况选择')+'</div>'+ 
+      (choseCorrect?'<div style="background:#eaf8f0;color:#26724c;border-radius:10px;padding:10px 14px;font-weight:600;margin:12px 0 4px">✓ 选对了，认真看一遍下面的详解</div>':'<div style="background:#fff1ed;color:#b44529;border-radius:10px;padding:10px 14px;font-weight:600;margin:12px 0 4px">✗ 正确意思是「'+esc(w.meaning)+'」，重点记忆</div>')+
       // 详解小按钮（折叠面板）
       tab('meaning','📖 释义','<p style="font-size:18px;font-weight:600">'+esc(w.meaning)+'</p>'+(w.examMeaning?'<p style="margin-top:6px"><b>考试常考：</b>'+esc(w.examMeaning)+'</p>':''))+
       tab('example','📝 例句','<p lang="en" class="reading" style="font-size:15px">'+studySentenceHtml(study.example)+' <button class="speaker" data-speak="'+esc(study.example)+'">◖))</button></p><p class="small" style="margin-top:4px"><b>整句翻译：</b>'+esc(study.translation)+'</p>')+
@@ -553,9 +550,9 @@ function quickLearn(){
       tab('affix','🌳 词根词缀',affixHtml+(w.wordFamily&&w.wordFamily.length?'<p style="margin-top:8px"><b>同根词：</b>'+w.wordFamily.map(esc).join(', ')+'</p>':''))+
       (w.specialMeaning?tab('special','⭐ 熟词生义','<p style="color:#b44529">'+esc(w.specialMeaning)+'</p>'):'')+
       (w.confuseWith&&w.confuseWith.length?tab('confuse','⚠️ 易混词','<p>'+w.confuseWith.map(esc).join('；')+'</p>'):'')+
-      // 已先选择熟悉度时只需继续；主动打开讲解时仍可评级
+      // 详解后按真实掌握程度评级
       '<div class="answerbar" style="margin-top:24px">'+
-        (item.rating?'<button class="btn" data-act="confirmQuickRating">看完了，继续下一个 →</button>':'<button class="btn" style="background:#26724c" data-act="quickKnow">✓ 认识</button><button class="btn" style="background:#d4930a" data-act="quickFuzzy">~ 模糊</button><button class="btn" style="background:#b44529" data-act="quickUnknown">✗ 不认识</button>')+
+        '<button class="btn" style="background:#26724c" data-act="know">✓ 认识</button><button class="btn" style="background:#d4930a" data-act="fuzzy">~ 模糊</button><button class="btn" style="background:#b44529" data-act="unknown">✗ 不认识</button>'+
       '</div>'+ 
       '<div class="hint">系统会根据熟悉度安排下一次复习 · 键盘 1/2/3</div>'+ 
     '</div>'+
@@ -576,12 +573,12 @@ function detailSection(w){
   return html;
 }
 
-function quickRecognize(rating,showOnly=false){
-  const s=state.session;if(!s||s.mode!=='quick'||!s.queue[0])return;
-  const item=s.queue[0];
-  if(showOnly){item.rating=null;item.stage='detail';save();render();return;}
-  if(rating==='know'){quickAnswer('know');return;}
-  item.rating=rating;item.stage='detail';item.openTabs=['meaning','example','collocation','usage'];save();render();
+function quickChoose(i){
+  const s=state.session;if(!s||s.mode!=='quick'||!s.queue[0]||s.queue[0].stage!=='choice')return;
+  const item=s.queue[0];item.choice=i;item.stage='detail';
+  if(!item.openTabs||item.openTabs.length<=1)item.openTabs=['meaning','example','collocation','usage'];
+  if(item.options[i]&&item.options[i].id===item.id)s.correct++;
+  save();render();
 }
 // 折叠面板切换
 function toggleWordTab(tabKey){
@@ -605,7 +602,7 @@ function quickAnswer(known){
   s.done++;
   // 只有"不会"的词才插入队列后面立即重试；"模糊"的词2天后复习
   if(!correct&&!fuzzy&&!item.retry){
-    s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'recognition',rating:null,openTabs:['meaning','example','collocation','usage'],retry:true});
+    s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'choice',options:null,choice:-1,openTabs:['meaning','example','collocation','usage'],retry:true});
   }
   save();render();
 }
@@ -1402,17 +1399,23 @@ function bind(){
   document.querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>speak(b.dataset.speak));
   document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>actions[b.dataset.act]?.());
   document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>answer(+b.dataset.choice));
+  document.querySelectorAll('[data-quickchoice]').forEach(b=>b.onclick=()=>quickChoose(+b.dataset.quickchoice));
   document.querySelectorAll('[data-wordtab]').forEach(b=>b.onclick=()=>toggleWordTab(b.dataset.wordtab));
   document.querySelectorAll('[data-testchoice]').forEach(b=>b.onclick=()=>testAnswer(+b.dataset.testchoice));
   document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;wordPage=0;render()});
   document.querySelectorAll('[data-reading]').forEach(b=>b.onclick=()=>{readingIndex=+b.dataset.reading;translation=false;glossPop=null;readingAnswers={};state.lastReading=readingIndex;save();render()});
-  document.querySelectorAll('[data-gloss]').forEach(b=>b.onclick=(e)=>{
-    e.stopPropagation();
-    const info=lookup(b.dataset.gloss);
-    const rect=b.getBoundingClientRect();
-    glossPop={text:info.text,id:info.id,learned:info.learned,x:rect.left,y:rect.bottom+4};
-    render();
-  });
+  // 例句和阅读中的查词使用事件委托，避免弹窗内容重新渲染后失去点击事件。
+  if(!window._glossWordBound){
+    window._glossWordBound=true;
+    document.addEventListener('click',(e)=>{
+      const b=e.target.closest&&e.target.closest('[data-gloss]');
+      if(!b)return;
+      e.preventDefault();e.stopPropagation();
+      const info=lookup(b.dataset.gloss),rect=b.getBoundingClientRect();
+      glossPop={text:info.text,id:info.id,learned:info.learned,x:rect.left,y:rect.bottom+4};
+      render();
+    },true);
+  }
   if(!window._glossCloseBound){
     window._glossCloseBound=true;
     document.addEventListener('click',(e)=>{if(glossPop&&!e.target.closest('.gloss-pop')&&!e.target.closest('[data-gloss]')){glossPop=null;render()}});
@@ -1482,11 +1485,6 @@ const actions={saveWriting:()=>{const x=document.querySelector('#writingAnswer')
   know:()=>quickAnswer('know'),
   fuzzy:()=>quickAnswer('fuzzy'),
   unknown:()=>{if(state.session?.mode==='quick')quickAnswer('unknown');else answer(-1)},
-  quickKnow:()=>quickRecognize('know'),
-  quickFuzzy:()=>quickRecognize('fuzzy'),
-  quickUnknown:()=>quickRecognize('unknown'),
-  quickShowDetail:()=>quickRecognize(null,true),
-  confirmQuickRating:()=>{const item=state.session?.queue?.[0];if(item&&item.rating)quickAnswer(item.rating)},
   toggleDetail:()=>{if(state.session?.queue[0]){state.session.queue[0].showDetail=!state.session.queue[0].showDetail;render()}},
   next:()=>next(),
   nextTest:()=>{const s=state.session;if(!s?.feedback)return;s.queue.shift();s.feedback=null;save();render()},
@@ -1602,10 +1600,10 @@ document.addEventListener('keydown',e=>{
   if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)||document.querySelector('dialog[open]'))return;
   if(view==='quick'){
     const item=state.session?.queue?.[0];
-    if(item&&item.stage==='recognition'){
-      if(e.key==='1')actions.quickKnow();
-      if(e.key==='2')actions.quickFuzzy();
-      if(e.key==='3')actions.quickUnknown();
+    if(item&&item.stage==='choice'){
+      const numMap={'1':0,'2':1,'3':2,'4':3,'a':0,'b':1,'c':2,'d':3};
+      const k=e.key.toLowerCase();
+      if(numMap[k]!==undefined)quickChoose(numMap[k]);
     }else{
       if(e.key==='Enter'&&item?.rating)actions.confirmQuickRating();
     }
