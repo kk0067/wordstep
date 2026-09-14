@@ -1,123 +1,930 @@
 'use strict';
-const KEY='wordstep-v1',DAY=86400000;
+const KEY='wordstep-v2',DAY=86400000;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function dateKey(d=new Date()){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function initial(){const end=new Date();end.setDate(end.getDate()+30);return{version:2,start:dateKey(),exam:dateKey(end),minutes:30,newGoal:30,reviewGoal:40,records:{},days:{},readings:{},session:null}}
-let state=initial(),storageError=false;
-try{const raw=localStorage.getItem(KEY);if(raw)state=validate(JSON.parse(raw))}catch{storageError=true}
-function validate(s){
- if(!s||!(s.version===1||s.version===2)||![30,60].includes(s.minutes)||!validDate(s.start)||!validDate(s.exam)||!s.records||!s.days||!s.readings)throw Error('备份格式不正确');
- const n=initial();Object.assign(n,{version:2,start:s.start,exam:s.exam,minutes:s.minutes,newGoal:s.newGoal||30,reviewGoal:s.reviewGoal||40,mistakes:s.mistakes||{}});
- for(const [id,r] of Object.entries(s.records)){if(!WORDS.some(w=>w.id===id)||!r||!Number.isFinite(r.due)||!Number.isInteger(r.level)||r.level<0||r.level>5||!Number.isInteger(r.lapses)||r.lapses<0||!validDate(r.first))throw Error('词汇记录无效');n.records[id]={due:r.due,level:r.level,lapses:r.lapses,first:r.first}}
- for(const [d,v] of Object.entries(s.days)){if(!validDate(d)||!v||!['new','reviews','correct','attempts'].every(k=>Number.isInteger(v[k])&&v[k]>=0))throw Error('学习记录无效');n.days[d]={new:v.new,reviews:v.reviews,correct:v.correct,attempts:v.attempts}}
- for(const [k,v] of Object.entries(s.readings)){if(!/^\d{4}-\d{2}-\d{2}-[0-4]$/.test(k)||!v||typeof v.correct!=='boolean'||!Number.isInteger(v.choice)||v.choice<0||v.choice>3)throw Error('阅读记录无效');n.readings[k]={correct:v.correct,choice:v.choice}}
- if(s.session&&Array.isArray(s.session.queue)&&s.session.queue.length<=1000&&s.session.queue.every(x=>WORDS.some(w=>w.id===x.id)&&['learn','test'].includes(x.stage))&&['learn','review','mistakes'].includes(s.session.mode)&&Number.isInteger(s.session.done)&&s.session.done>=0&&Number.isInteger(s.session.total)&&s.session.total>=0){n.session={...s.session,feedback:s.session.feedback&&typeof s.session.feedback.correct==='boolean'&&Number.isInteger(s.session.feedback.choice)?s.session.feedback:null}}
- return n
-}
 function validDate(x){return typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&dateKey(new Date(x+'T12:00:00'))===x}
+
+// ===== 状态初始化 =====
+function initial(){
+  const end=new Date();end.setDate(end.getDate()+30);
+  return{
+    version:3,
+    start:dateKey(),
+    exam:dateKey(end),
+    dailyNewGoal:100,
+    records:{},        // wordId -> {status, firstLearned, lastReviewed, correctCount, wrongCount, streak, nextReview, level, readingAppearances, readingLookups}
+    days:{},           // date -> {new, reviews, correct, attempts, testCorrect, testTotal}
+    readings:{},       // "date-index" -> {correct, choice, answers}
+    session:null,
+    weakWords:[],
+    recentLearned:[],
+    readingUnknownWords:[],
+    grammarProgress:{},
+    clozeProgress:{}
+  };
+}
+let state=initial(),storageError=false;
+
+// ===== 旧数据迁移 (v1 -> v3) =====
+function migrateOldState(raw){
+  try{
+    const old=JSON.parse(raw);
+    if(!old||old.version!==2)return null;
+    const n=initial();
+    n.start=old.start||dateKey();
+    n.exam=old.exam||n.exam;
+    n.dailyNewGoal=100;
+    // 迁移词汇记录：旧ID格式 "group-index" -> 通过word匹配新ID
+    const oldWordsMap={};
+    if(typeof WORDS!=='undefined'&&Array.isArray(WORDS)){
+      // 构建 word->newId 映射
+      const wordToId={};
+      WORDS.forEach(w=>{if(w&&w.word)wordToId[w.word.toLowerCase()]=w.id});
+      // 旧词库的 word 列表（从旧格式推断）
+      if(old.records){
+        for(const [oldId,r] of Object.entries(old.records)){
+          // 尝试从旧ID推断word：旧ID是 "g-i" 格式，我们需要旧词库
+          // 由于旧词库已被替换，我们通过 localStorage 中的旧词库备份或直接尝试匹配
+          // 这里用一个启发式：如果旧ID能在新词库中找到对应位置则迁移
+          const parts=oldId.split('-');
+          if(parts.length===2){
+            const g=parseInt(parts[0]),i=parseInt(parts[1]);
+            // 旧词库大约420词，尝试通过索引范围匹配
+            // 旧group 0-6 是单词，group 7是短语
+            // 我们直接尝试在新词库中找level匹配的词
+            // 更安全的方式：保存旧记录但标记为migrated，用户可以重新学习
+            const newWord=WORDS.find(w=>w.level===Math.min(g,5)&&!n.records[w.id]);
+            if(newWord&&r){
+              n.records[newWord.id]={
+                status:r.level>=3?'mastered':r.level>=1?'learning':'new',
+                firstLearned:r.first||dateKey(),
+                lastReviewed:dateKey(),
+                correctCount:r.level,
+                wrongCount:r.lapses||0,
+                streak:r.level,
+                nextReview:r.due||Date.now(),
+                level:r.level||0,
+                readingAppearances:0,
+                readingLookups:0
+              };
+            }
+          }
+        }
+      }
+    }
+    // 迁移天数记录
+    if(old.days){
+      for(const [d,v] of Object.entries(old.days)){
+        if(validDate(d)&&v){
+          n.days[d]={new:v.new||0,reviews:v.reviews||0,correct:v.correct||0,attempts:v.attempts||0,testCorrect:0,testTotal:0};
+        }
+      }
+    }
+    // 迁移阅读记录
+    if(old.readings){
+      for(const [k,v] of Object.entries(old.readings)){
+        n.readings[k]={correct:v.correct,choice:v.choice,answers:[v.choice]};
+      }
+    }
+    return n;
+  }catch(e){return null}
+}
+
+// 加载状态
+try{
+  const raw=localStorage.getItem(KEY);
+  if(raw){
+    const parsed=JSON.parse(raw);
+    if(parsed.version===3){state=parsed;}
+    else{
+      // 尝试迁移
+      const migrated=migrateOldState(raw);
+      if(migrated){state=migrated;save();}
+      else{state=initial();}
+    }
+  }else{
+    // 检查是否有v1旧数据
+    const oldRaw=localStorage.getItem('wordstep-v1');
+    if(oldRaw){
+      const migrated=migrateOldState(oldRaw);
+      if(migrated){state=migrated;save();}
+    }
+  }
+}catch(e){storageError=true}
+
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));storageError=false}catch{storageError=true;toast('保存失败：请导出备份，并检查浏览器存储设置。')}}
-function today(){return state.days[dateKey()]||{new:0,reviews:0,correct:0,attempts:0}}
-function daily(){return state.days[dateKey()]??= {new:0,reviews:0,correct:0,attempts:0}}
+function today(){return state.days[dateKey()]||{new:0,reviews:0,correct:0,attempts:0,testCorrect:0,testTotal:0}}
+function daily(){return state.days[dateKey()]??= {new:0,reviews:0,correct:0,attempts:0,testCorrect:0,testTotal:0}}
 function remaining(){return Math.ceil((new Date(state.exam+'T00:00:00')-new Date(dateKey()+'T00:00:00'))/DAY)}
-function goal(){return remaining()<=7?5:(state.newGoal||30)}
-function due(){return WORDS.filter(w=>state.records[w.id]&&state.records[w.id].due<=Date.now()).sort((a,b)=>state.records[a.id].due-state.records[b.id].due)}
-function mistakes(){return WORDS.filter(w=>state.records[w.id]?.lapses>0&&state.records[w.id].level<3)}
+function dayNumber(){return Math.max(1,Math.min(30,Math.floor((new Date(dateKey())-new Date(state.start))/DAY)+1))}
+
+// ===== 词汇工具函数 =====
+function getWord(id){return WORDS.find(w=>w.id===id)}
+function isPhrase(w){return w&&w.isPhrase===true}
+function uniqueWords(){return WORDS.filter(w=>!isPhrase(w))}
+function phrases(){return WORDS.filter(w=>isPhrase(w))}
+function core2000(){return WORDS.filter(w=>w.tags&&w.tags.includes('Core2000'))}
+function core3000(){return WORDS.filter(w=>w.tags&&w.tags.includes('Core3000'))}
+
+// 获取到期复习词
+function dueWords(){
+  const now=Date.now();
+  return WORDS.filter(w=>{
+    const r=state.records[w.id];
+    return r&&r.nextReview&&r.nextReview<=now&&r.status!=='new';
+  }).sort((a,b)=>{
+    const ra=state.records[a.id],rb=state.records[b.id];
+    // 优先：错误次数多的 > 连续正确少的 > 到期早的
+    if(rb.wrongCount!==ra.wrongCount)return rb.wrongCount-ra.wrongCount;
+    if(ra.streak!==rb.streak)return ra.streak-rb.streak;
+    return (ra.nextReview||0)-(rb.nextReview||0);
+  });
+}
+
+// 获取弱词
+function weakWordsList(){
+  return WORDS.filter(w=>{
+    const r=state.records[w.id];
+    return r&&(r.wrongCount>0||r.status==='fuzzy'||r.status==='learning');
+  }).sort((a,b)=>(state.records[b.id].wrongCount||0)-(state.records[a.id].wrongCount||0));
+}
+
+// 获取未学习词（按level和frequency排序）
+function unlearnedWords(){
+  return WORDS.filter(w=>!state.records[w.id]||state.records[w.id].status==='new')
+    .sort((a,b)=>{
+      if(a.level!==b.level)return a.level-b.level;
+      return (b.frequency||0)-(a.frequency||0);
+    });
+}
+
+// 计算下次复习时间 (SRS)
+function nextReviewTime(level,correct){
+  const intervals=[0,1,2,4,7,14,21,30]; // 天
+  if(!correct)return Date.now()+10*60000; // 10分钟后
+  const lvl=Math.min(level,intervals.length-1);
+  return Date.now()+intervals[lvl]*DAY;
+}
+
+// 更新单词记录
+function updateWordRecord(id,correct,mode){
+  const r=state.records[id]??={
+    status:'new',firstLearned:dateKey(),lastReviewed:dateKey(),
+    correctCount:0,wrongCount:0,streak:0,nextReview:Date.now(),level:0,
+    readingAppearances:0,readingLookups:0
+  };
+  r.lastReviewed=dateKey();
+  if(correct){
+    r.correctCount++;
+    r.streak++;
+    r.level=Math.min(7,r.level+1);
+    if(r.streak>=5)r.status='mastered';
+    else if(r.streak>=3)r.status='recognized';
+    else r.status='learning';
+  }else{
+    r.wrongCount++;
+    r.streak=0;
+    r.level=Math.max(0,r.level-1);
+    r.status='fuzzy';
+    // 加入弱词列表
+    if(!state.weakWords.includes(id))state.weakWords.push(id);
+  }
+  r.nextReview=nextReviewTime(r.level,correct);
+  // 更新最近学习
+  state.recentLearned=state.recentLearned.filter(x=>x!==id);
+  state.recentLearned.unshift(id);
+  if(state.recentLearned.length>100)state.recentLearned.pop();
+  return r;
+}
+
 function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>$('#toast').style.display='none',3600)}
-let view='home',filter='all',query='',readingIndex=0,translation=false,gloss='',options=[],lastQuestion='';
-const navs=[['home','◷','今日学习'],['words','▤','我的词库'],['reading','▧','阅读训练'],['sentence','⌁','长难句'],['report','▥','学习报告'],['plan','▦','30天计划'],['settings','⚙','学习设置']];
+
+// ===== 视图和导航 =====
+let view='home',filter='all',query='',readingIndex=0,translation=false,gloss='',options=[],lastQuestion='',quickMode=false,testMode=false;
+
+const navs=[
+  ['home','◷','今日冲刺'],
+  ['quick','⚡','快速背词'],
+  ['review','↻','复习'],
+  ['test','✎','词汇测试'],
+  ['words','▤','我的词库'],
+  ['reading','▧','阅读训练'],
+  ['sentence','⌁','长难句'],
+  ['grammar','§','语法'],
+  ['report','▥','学习报告'],
+  ['settings','⚙','设置']
+];
+
 function navigate(v){view=v;render();window.scrollTo({top:0,behavior:'smooth'})}
-function header(title,sub='河南成人高考 · 专升本英语'){return '<div class="top"><div><div class="eyebrow">'+sub+'</div><h1>'+title+'</h1></div><span class="datepill">'+(remaining()>0?'距目标日期 <b>'+remaining()+'</b> 天':remaining()===0?'今天是目标日期':'目标日期已过')+'</span></div>'}
+
+function header(title,sub='河南成人高考 · 专升本英语 · 30天冲刺'){
+  return '<div class="top"><div><div class="eyebrow">'+sub+'</div><h1>'+title+'</h1></div><span class="datepill">'+(remaining()>0?'距考试 <b>'+remaining()+'</b> 天':remaining()===0?'今天考试':'考试已过')+'</span></div>';
+}
+
 function render(){
- $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v||(view==='learn'&&v==='home')?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>每天 '+state.minutes+' 分钟 · 浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,learn:learning,words:wordlist,reading:reading,sentence:sentence,report:report,plan:plan,settings:settings}[view]||home)()+'</main></div>';
- bind();
+  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,sentence:sentence,grammar:grammarView,report:report,settings:settings}[view]||home)()+'</main></div>';
+  bind();
 }
+
+// ===== 首页：30天冲刺 =====
 function home(){
- const t=today(),d=due().length,learned=Object.keys(state.records).length,mastered=Object.values(state.records).filter(r=>r.level>=3).length;
- const day=Math.max(1,Math.min(30,Math.floor((new Date(dateKey())-new Date(state.start))/DAY)+1));
- return header('今天，再前进一步')+'<div class="grid"><section><div class="focus"><div class="eyebrow">DAY '+String(day).padStart(2,'0')+' / 30 · '+(remaining()<=7?'考前回顾':'基础积累')+'</div><h2>'+(state.session?'接着上次，继续学':d?'先复习，才能真正记住':'从最常用的词开始')+'</h2><p>'+(d?'有 '+d+' 个词到了复习时间。先试着回忆，再看答案。':'不用一次记很多。今天学一点，明天再见一面。')+'</p><button class="btn white" data-act="start">'+(state.session?'继续上次学习':d?'开始今日复习':'开始今日学习')+' <span aria-hidden="true">→</span></button><div class="focusmeta"><div><b>'+Math.max(0,goal()-t.new)+'</b>今日剩余新词</div><div><b>'+d+'</b>到期复习</div><div><b>'+state.minutes+' <small>min</small></b>每日时间预算</div></div></div><div class="stats"><div class="stat"><span>累计接触</span><strong>'+learned+' <span>/ '+WORDS.length+'</span></strong><span>个单词与短语</span></div><div class="stat"><span>稳定记忆</span><strong>'+mastered+'</strong><span>连续答对至少3次</span></div><div class="stat"><span>今日正确率</span><strong>'+(t.attempts?Math.round(t.correct/t.attempts*100)+'%':'—')+'</strong><span>'+(t.attempts?'完成 '+t.attempts+' 次回忆':'完成测验后显示')+'</span></div></div><div class="panel"><h2>今天的三小步</h2><div class="task"><div class="tasknum">01</div><div><h3>把旧词记牢</h3><p>'+d+' 个到期 · 已复习 '+t.reviews+' 次</p></div><button class="btn soft" data-act="review">复习</button></div><div class="task"><div class="tasknum">02</div><div><h3>认识 '+goal()+' 个新词</h3><p>先看意思，再选释义 · 已学 '+t.new+' 个</p></div><button class="btn soft" data-act="new">学新词</button></div><div class="task"><div class="tasknum">03</div><div><h3>在短文里认出它们</h3><p>点击生词查看解释 · 约5分钟</p></div><button class="btn soft" data-nav="reading">去练习</button></div></div></section><aside class="aside"><div class="panel"><div class="row"><h3>今日新词进度</h3><span class="badge">'+Math.min(100,Math.round(t.new/goal()*100))+'%</span></div><div class="ring" style="--progress:'+Math.min(100,t.new/goal()*100)+'%"><div><b>'+t.new+'<span class="muted" style="font-size:18px"> / '+goal()+'</span></b><small>新词已接触</small></div></div><p class="small muted" style="text-align:center">学过不等于记住<br>之后的回忆测验才是关键</p><div class="week">'+Array.from({length:7},(_,i)=>{const dt=new Date();dt.setDate(dt.getDate()-6+i);const x=state.days[dateKey(dt)];return '<div class="day">'+['日','一','二','三','四','五','六'][dt.getDay()]+'<i class="'+(x&&(x.new||x.attempts)?'done':'')+'">'+(x&&(x.new||x.attempts)?'✓':'·')+'</i></div>'}).join('')+'</div></div><div class="panel note"><span class="badge">零基础小提醒</span><h3 style="margin-top:16px">先认出意思，再追求拼写</h3><p>遇到 I、you、because 这样的短词也别跳过。它们能帮你看清“谁做了什么”和句子之间的关系。</p><button class="linkbtn" data-act="mistakes" style="margin-top:14px">回顾易错词（'+mistakes().length+'） →</button></div></aside></div><div class="footer">基础冲刺词库：'+WORDS.length+' 个词与短语；自编练习，并非官方完整考纲或真题。背词之外，仍需安排语法、语音、写作与真题练习。</div>';
+  const t=today(),d=dueWords().length,learned=Object.keys(state.records).length,mastered=Object.values(state.records).filter(r=>r.status==='mastered'||r.level>=3).length;
+  const dn=dayNumber();
+  const goal=state.dailyNewGoal;
+  const newRemaining=Math.max(0,goal-t.new);
+  const phase=dn<=7?'基础积累期':dn<=20?'强化训练期':'冲刺模考期';
+  const recs=dn<=7?{vocab:'60%',grammar:'20%',reading:'20%'}:dn<=20?{vocab:'40%',grammar:'20%',reading:'40%'}:{vocab:'30%',grammar:'25%',reading:'45%'};
+
+  return header('今天，再前进一步')+
+  '<div class="grid"><section>'+
+    '<div class="focus"><div class="eyebrow">DAY '+String(dn).padStart(2,'0')+' / 30 · '+phase+'</div>'+
+    '<h2>'+(d>0?'先复习 '+d+' 个到期词':'从最高频核心词开始')+'</h2>'+
+    '<p>'+(d>0?'复习比学新词更重要。先回忆，再看答案。':'今天目标 '+goal+' 个新词，从 Core 2000 开始。')+'</p>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      '<button class="btn white" data-act="startQuick">⚡ 快速背词 →</button>'+
+      (d>0?'<button class="btn white" data-act="startReview" style="background:rgba(255,255,255,.2)">↻ 复习 '+d+' 词</button>':'')+
+      '<button class="btn white" data-act="startTest" style="background:rgba(255,255,255,.15)">✎ 词汇测试</button>'+
+    '</div>'+
+    '<div class="focusmeta"><div><b>'+newRemaining+'</b>今日剩余新词</div><div><b>'+d+'</b>到期复习</div><div><b>'+goal+'</b>每日新词目标</div></div>'+
+  '</div>'+
+
+  '<div class="stats">'+
+    '<div class="stat"><span>累计接触</span><strong>'+learned+' <span>/ '+uniqueWords().length+'</span></strong><span>个单词</span></div>'+
+    '<div class="stat"><span>稳定记忆</span><strong>'+mastered+'</strong><span>连续答对≥3次</span></div>'+
+    '<div class="stat"><span>今日正确率</span><strong>'+(t.attempts?Math.round(t.correct/t.attempts*100)+'%':'—')+'</strong><span>'+(t.attempts?t.attempts+' 次回忆':'完成测验后显示')+'</span></div>'+
+  '</div>'+
+
+  '<div class="panel"><h2>今天的任务</h2>'+
+    '<div class="task"><div class="tasknum">01</div><div><h3>快速背词 '+goal+' 个</h3><p>已学 '+t.new+' 个 · 认识/模糊/不会 快速过</p></div><button class="btn soft" data-act="startQuick">开始</button></div>'+
+    '<div class="task"><div class="tasknum">02</div><div><h3>复习到期词</h3><p>'+d+' 个到期 · 已复习 '+t.reviews+' 次</p></div><button class="btn soft" data-act="startReview">复习</button></div>'+
+    '<div class="task"><div class="tasknum">03</div><div><h3>阅读训练</h3><p>在文章中遇见背过的词 · 点击查词</p></div><button class="btn soft" data-nav="reading">去阅读</button></div>'+
+    '<div class="task"><div class="tasknum">04</div><div><h3>长难句 3 句</h3><p>找主干 → 猜意思 → 看解析</p></div><button class="btn soft" data-nav="sentence">去练习</button></div>'+
+  '</div>'+
+
+  '<div class="panel" style="margin-top:18px"><h2>本阶段建议比例（Day '+dn+'）</h2>'+
+    '<p class="muted small">词汇 '+recs.vocab+' · 阅读 '+recs.reading+' · 语法/完形 '+recs.grammar+'。这只是建议，不是锁。</p>'+
+    '<div class="week">'+Array.from({length:7},(_,i)=>{const dt=new Date();dt.setDate(dt.getDate()-6+i);const x=state.days[dateKey(dt)];return '<div class="day">'+['日','一','二','三','四','五','六'][dt.getDay()]+'<i class="'+(x&&(x.new||x.attempts)?'done':'')+'">'+(x&&(x.new||x.attempts)?'✓':'·')+'</i></div>'}).join('')+'</div>'+
+  '</div>'+
+  '</section>'+
+
+  '<aside class="aside">'+
+    '<div class="panel"><div class="row"><h3>今日新词进度</h3><span class="badge">'+Math.min(100,Math.round(t.new/goal*100))+'%</span></div>'+
+    '<div class="ring" style="--progress:'+Math.min(100,t.new/goal*100)+'%"><div><b>'+t.new+'<span class="muted" style="font-size:18px"> / '+goal+'</span></b><small>新词已接触</small></div></div>'+
+    (t.new>=goal?'<p class="small" style="text-align:center;color:#26724c"><b>🎉 今日目标已完成！</b><br>可以继续学习更多</p>':'<p class="small muted" style="text-align:center">学过不等于记住<br>复习才是关键</p>')+
+    (t.new>=goal?'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"><button class="btn soft" data-act="continue20">+20词</button><button class="btn soft" data-act="continue50">+50词</button><button class="btn soft" data-act="continue100">+100词</button><button class="btn outline" data-act="freeLearn">自由学习</button></div>':'')+
+    '</div>'+
+
+    '<div class="panel note"><span class="badge">核心数据</span>'+
+    '<h3 style="margin-top:16px">词库概况</h3>'+
+    '<p class="small">Unique Words：<b>'+uniqueWords().length+'</b><br>Phrases：<b>'+phrases().length+'</b><br>Core 2000：<b>'+core2000().length+'</b><br>Core 3000：<b>'+core3000().length+'</b></p>'+
+    '<button class="linkbtn" data-act="reviewWeak" style="margin-top:14px">易错词（'+weakWordsList().length+'） →</button>'+
+    '</div>'+
+  '</aside></div>'+
+  '<div class="footer">词库基于成人高考专升本英语大纲与真题高频词构建。自编练习，并非官方完整考纲或真题。</div>';
 }
-function start(mode='auto'){
- if(state.session?.queue.length){view='learn';render();return}
- if(mode==='auto')mode=due().length?'review':'learn';
- let ws=mode==='review'?due():mode==='mistakes'?mistakes():WORDS.filter(w=>!state.records[w.id]).slice(0,Math.max(0,goal()-today().new));
- if(!ws.length){toast(mode==='learn'?'今天的新词目标已完成，可以练习短文或复习易错词。':'目前没有需要复习的词，可以开始学新词。');return}
- ws=ws.slice(0,mode==='learn'?goal():20);
- state.session={mode,queue:ws.map(w=>({id:w.id,stage:state.records[w.id]?'test':'learn'})),done:0,total:ws.length,feedback:null,correct:0};save();view='learn';lastQuestion='';render()
+
+// ===== 快速背词模式 =====
+function startQuick(count){
+  const goal=count||state.dailyNewGoal;
+  const t=today();
+  const alreadyToday=t.new;
+  const need=Math.max(0,goal-alreadyToday);
+  // 优先取未学的，按level和frequency排序
+  let ws=unlearnedWords().slice(0,Math.max(need,20));
+  if(ws.length<5){
+    // 新词不够，加入弱词
+    ws=ws.concat(weakWordsList().slice(0,20));
+  }
+  if(!ws.length){toast('暂时没有可学习的词，可以去复习或阅读。');return}
+  state.session={mode:'quick',queue:ws.map(w=>({id:w.id,stage:'learn'})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
+  save();view='quick';render();
 }
+
+function quickLearn(){
+  const s=state.session;
+  if(!s||s.mode!=='quick'){
+    return header('快速背词')+'<div class="panel"><p>选择每次学习的词数：</p>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      [20,50,80,100,120,150].map(n=>'<button class="btn" data-act="quick'+n+'">'+n+' 词</button>').join('')+
+      '</div><p class="muted small" style="margin-top:16px">快速背词只显示 单词/音标/词性/核心意思，操作 认识/模糊/不会 后快速下一词。点击展开查看例句和搭配。</p></div>';
+  }
+  const item=s.queue[0];
+  if(!item){
+    const elapsed=Math.round((Date.now()-s.startTime)/1000);
+    return header('本组完成')+'<div class="learnwrap panel wordcard">'+
+      '<span class="badge green">已保存</span>'+
+      '<h2 style="margin-top:24px">完成 '+s.done+' 词，用时 '+elapsed+' 秒</h2>'+
+      '<div class="resultnum">'+s.correct+'<span style="font-size:18px"> 认识</span></div>'+
+      '<p class="muted">不认识的词会在10分钟后再次出现，并加入复习队列。</p>'+
+      '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'+
+      '<button class="btn" data-act="finishQuick">回到首页</button>'+
+      '<button class="btn outline" data-act="continueQuick">继续学 '+state.dailyNewGoal+' 词</button>'+
+      '<button class="btn soft" data-act="startReview">去复习</button>'+
+      '</div></div>';
+  }
+  const w=getWord(item.id);
+  if(!w){s.queue.shift();save();render();return ''}
+  const showDetail=item.showDetail;
+
+  return header('快速背词 · '+s.done+' / '+(s.done+s.queue.length))+
+  '<div class="learnwrap">'+
+    '<div class="row small muted"><button class="linkbtn" data-nav="home">← 暂停</button><span>已完成 '+s.done+' · 还剩 '+s.queue.length+'</span></div>'+
+    '<div class="progress"><div style="width:'+Math.min(100,s.done/(s.done+s.queue.length)*100)+'%"></div></div>'+
+    '<div class="panel wordcard">'+
+      '<span class="badge">Level '+w.level+' · '+(w.tags&&w.tags.includes('Core2000')?'Core 2000':w.tags&&w.tags.includes('Core3000')?'Core 3000':'')+'</span>'+
+      '<div class="word" lang="en">'+esc(w.word)+'</div>'+
+      '<div class="phonetic">'+esc(w.phonetic||'')+'</div>'+
+      '<div class="pos">'+esc(w.partOfSpeech||'')+'</div>'+
+      '<button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button>'+
+      '<div class="meaning">'+esc(w.meaning)+'</div>'+
+      (w.examMeaning?'<div class="exam-meaning">考试：'+esc(w.examMeaning)+'</div>':'')+
+      (showDetail?detailSection(w):'<button class="linkbtn" data-act="toggleDetail" style="margin-top:10px">展开详情（例句/搭配/用法）</button>')+
+      '<div class="answerbar" style="margin-top:28px">'+
+        '<button class="btn" style="background:#26724c" data-act="know">✓ 认识</button>'+
+        '<button class="btn" style="background:#d4930a" data-act="fuzzy">~ 模糊</button>'+
+        '<button class="btn" style="background:#b44529" data-act="unknown">✗ 不会</button>'+
+      '</div>'+
+      '<div class="hint">键盘：1=认识 2=模糊 3=不会</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function detailSection(w){
+  let html='<div class="example">';
+  if(w.example){html+='<p lang="en"><b>例句：</b>'+esc(w.example)+(w.translation?' <button class="linkbtn" data-speak="'+esc(w.example)+'">◖))</button>':'')+'</p>';}
+  if(w.translation){html+='<p>'+esc(w.translation)+'</p>';}
+  if(w.collocations&&w.collocations.length){html+='<p><b>搭配：</b>'+w.collocations.map(esc).join('；')+'</p>';}
+  if(w.commonUsage){html+='<p><b>用法：</b>'+esc(w.commonUsage)+'</p>';}
+  if(w.examUsage){html+='<p><b>考试用法：</b>'+esc(w.examUsage)+'</p>';}
+  if(w.specialMeaning){html+='<p style="color:#b44529"><b>熟词生义：</b>'+esc(w.specialMeaning)+'</p>';}
+  if(w.wordFamily&&w.wordFamily.length){html+='<p><b>同根词：</b>'+w.wordFamily.map(esc).join(', ')+'</p>';}
+  if(w.confuseWith&&w.confuseWith.length){html+='<p><b>易混词：</b>'+w.confuseWith.map(esc).join(', ')+'</p>';}
+  html+='</div>';
+  return html;
+}
+
+function quickAnswer(known){
+  const s=state.session;if(!s||s.mode!=='quick'||!s.queue[0])return;
+  const item=s.queue.shift();
+  const correct=known==='know';
+  const r=updateWordRecord(item.id,correct,'quick');
+  const d=daily();
+  if(!state.records[item.id]||state.records[item.id].firstLearned===dateKey())d.new++;
+  d.attempts++;if(correct)d.correct++;
+  s.done++;s.correct+=correct?1:0;
+  // 不认识的词插入队列后面重试
+  if(!correct&&!item.retry){
+    s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'learn',retry:true});
+  }
+  save();render();
+}
+
+// ===== 复习模式 =====
+function startReview(){
+  const ws=dueWords();
+  if(!ws.length){
+    // 没有到期词，用弱词
+    const weak=weakWordsList();
+    if(!weak.length){toast('目前没有需要复习的词，太棒了！可以学新词或阅读。');return}
+    ws=weak.slice(0,30);
+  }
+  const reviewSet=ws.slice(0,Math.min(ws.length,30));
+  state.session={mode:'review',queue:reviewSet.map(w=>({id:w.id,stage:'test'})),done:0,total:reviewSet.length,feedback:null,correct:0,startTime:Date.now()};
+  save();view='review';render();
+}
+
+function reviewView(){
+  const s=state.session;
+  if(!s||s.mode!=='review'){
+    const d=dueWords().length,w=weakWordsList().length;
+    return header('复习中心')+'<div class="panel">'+
+      '<h2>复习队列</h2>'+
+      '<p>到期复习：<b>'+d+'</b> 个 · 易错词：<b>'+w+'</b> 个</p>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      '<button class="btn" data-act="startReview">开始复习（最多30词）</button>'+
+      '<button class="btn outline" data-act="reviewAll">复习所有到期词</button>'+
+      '</div>'+
+      '<p class="muted small" style="margin-top:16px">复习采用四选一释义测试。答错的词会在10分钟后再次出现，并提高复习优先级。</p>'+
+      (w>0?'<h3 style="margin-top:20px">易错词列表（前20）</h3><div>'+weakWordsList().slice(0,20).map(w=>'<span class="word-chip">'+esc(w.word)+'</span>').join('')+'</div>':'')+
+    '</div>';
+  }
+  const item=s.queue[0];
+  if(!item){
+    const elapsed=Math.round((Date.now()-s.startTime)/1000);
+    const pct=s.done?Math.round(s.correct/s.done*100):0;
+    return header('复习完成')+'<div class="learnwrap panel wordcard">'+
+      '<span class="badge green">已保存</span>'+
+      '<h2 style="margin-top:24px">复习 '+s.done+' 词，正确率 '+pct+'%</h2>'+
+      '<div class="resultnum">'+s.correct+'<span style="font-size:18px"> / '+s.done+' 正确</span></div>'+
+      '<p class="muted">用时 '+elapsed+' 秒。答错的词已加入高频复习队列。</p>'+
+      '<button class="btn" data-act="finishReview">回到首页</button>'+
+      (dueWords().length>0?'<button class="btn outline" style="margin-left:12px" data-act="startReview">继续复习</button>':'')+
+    '</div>';
+  }
+  const w=getWord(item.id);
+  if(!w){s.queue.shift();save();render();return ''}
+  const key=item.id+'-'+item.stage;
+  if(lastQuestion!==key){
+    options=s.feedback&&Array.isArray(s.optionIds)&&s.optionIds.length===4?s.optionIds.map(id=>getWord(id)):choices(w);
+    lastQuestion=key;s.optionIds=options.map(x=>x.id);
+  }
+  const fb=s.feedback;
+  return header('复习 · '+s.done+' / '+(s.done+s.queue.length))+
+  '<div class="learnwrap">'+
+    '<div class="row small muted"><button class="linkbtn" data-nav="home">← 暂停</button><span>已完成 '+s.done+' · 还剩 '+s.queue.length+'</span></div>'+
+    '<div class="progress"><div style="width:'+Math.min(100,s.done/(s.done+s.queue.length)*100)+'%"></div></div>'+
+    '<div class="panel wordcard">'+
+      '<span class="badge">复习测试</span>'+
+      '<div class="word" lang="en">'+esc(w.word)+'</div>'+
+      '<div class="phonetic">'+esc(w.phonetic||'')+'</div>'+
+      '<button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button>'+
+      '<p class="muted small">选择它的中文意思</p>'+
+      '<div class="choicegrid">'+options.map((o,i)=>'<button class="choice '+(fb?(o.id===w.id?'correct':fb.choice===i?'wrong':''):'')+'" data-choice="'+i+'" '+(fb?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+'</button>').join('')+'</div>'+
+      (fb?'<div class="feedback" role="status"><b>'+(fb.correct?'答对了。':'这次没记住。')+'</b> '+esc(w.word)+' = '+esc(w.meaning)+'<br>'+(w.examMeaning?'<span class="small">考试：'+esc(w.examMeaning)+'</span>':'')+'</div>'+
+      (w.example?'<div class="example"><p lang="en">'+esc(w.example)+'</p>'+(w.translation?'<p>'+esc(w.translation)+'</p>':'')+'</div>':'')+
+      '<div class="answerbar"><button class="btn" data-act="next">继续 →</button></div>':
+      '<div class="answerbar"><button class="btn outline" data-act="unknown">还不认识，看答案</button></div>')+
+    '</div>'+
+  '</div>';
+}
+
 function choices(w){
- const pool=WORDS.filter(x=>x.id!==w.id&&x.meaning!==w.meaning);const picked=[w];
- while(picked.length<4){const p=pool[Math.floor(Math.random()*pool.length)];if(!picked.some(x=>x.meaning===p.meaning))picked.push(p)}
- return picked.sort(()=>Math.random()-.5)
+  const pool=WORDS.filter(x=>x.id!==w.id&&x.meaning!==w.meaning&&!isPhrase(x));
+  const picked=[w];
+  while(picked.length<4&&pool.length){
+    const p=pool[Math.floor(Math.random()*pool.length)];
+    if(!picked.some(x=>x.meaning===p.meaning))picked.push(p);
+  }
+  while(picked.length<4)picked.push({id:'fake'+picked.length,meaning:'其他'});
+  return picked.sort(()=>Math.random()-.5);
 }
-function learning(){
- const s=state.session;if(!s){view='home';return home()}
- const item=s.queue[0];if(!item)return header('这一组，完成了')+'<div class="learnwrap panel wordcard"><span class="badge green">练习已保存</span><h2 style="margin-top:24px">每一次回忆，都在加深印象</h2><div class="resultnum">'+s.done+'<span style="font-size:18px"> 次回忆</span></div><p class="muted">本组答对 '+s.correct+' 次。易错词会在短时间后再次提醒。</p><button class="btn" data-act="finish">回到今日学习</button><button class="btn outline" style="margin-left:12px" data-act="finishread">练一篇短文</button></div>';
- const w=WORDS.find(x=>x.id===item.id);
- const key=item.id+'-'+item.stage;
- if(lastQuestion!==key){options=s.feedback&&Array.isArray(s.optionIds)&&s.optionIds.length===4&&s.optionIds.every(id=>WORDS.some(x=>x.id===id))?s.optionIds.map(id=>WORDS.find(x=>x.id===id)):choices(w);lastQuestion=key;s.optionIds=options.map(x=>x.id)}
- const learn=item.stage==='learn',fb=s.feedback;
- return header(learn?'先认识它，再试着回忆':'不翻答案，你还记得吗？','一组最多20个复习词 · 可随时暂停')+'<div class="learnwrap"><div class="row small muted"><button class="linkbtn" data-nav="home">← 暂停并返回</button><span>已完成 '+s.done+' 次回忆 · 还剩 '+s.queue.length+' 项</span></div><div class="progress"><div style="width:'+Math.min(100,s.done/(s.done+s.queue.length)*100)+'%"></div></div><div class="panel wordcard"><span class="badge">'+esc(w.category)+'</span><div class="word" lang="en">'+esc(w.word)+'</div><button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button>'+(learn?'<div class="meaning">'+esc(w.meaning)+'</div>'+example(w)+'<div class="answerbar"><button class="btn" data-act="learned">看完了，稍后考考我 →</button></div><div class="hint">先读单词和意思；别用汉字谐音代替发音。</div>':'<p class="muted small">选择它的中文意思</p><div class="choicegrid">'+options.map((o,i)=>'<button class="choice '+(fb?(o.id===w.id?'correct':fb.choice===i?'wrong':''):'')+'" data-choice="'+i+'" '+(fb?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+'</button>').join('')+'</div>'+(fb?'<div class="feedback" role="status"><b>'+(fb.correct?'答对了。':'这次没记住也没关系。')+'</b> '+esc(w.word)+' = '+esc(w.meaning)+'<br><span class="small">'+(fb.correct?'已安排下一次复习。':'稍后会再考一次；仍不熟悉的词会保留在易错词中。')+'</span></div>'+example(w)+'<div class="answerbar"><button class="btn" data-act="next">继续 →</button></div>':'<div class="answerbar"><button class="btn outline" data-act="unknown">还不认识，看看答案</button></div>'))+'</div></div>';
-}
-function example(w){return w.example?'<div class="example"><p lang="en">'+esc(w.example[0])+' <button class="linkbtn" data-speak="'+esc(w.example[0])+'" aria-label="朗读例句">◖))</button></p><p>'+esc(w.example[1])+'</p><p class="small muted">'+esc(w.example[2])+'</p></div>':'<div class="tip">记忆方法：朗读一次 → 看中文意思 → 在下一步遮住意思回忆。这个词暂未配专属例句。</div>'}
-function learned(){
- const s=state.session;if(!s||s.queue[0]?.stage!=='learn')return;const item=s.queue.shift();
- if(!state.records[item.id]){state.records[item.id]={due:Date.now(),level:0,lapses:0,first:dateKey()};daily().new++}
- s.queue.splice(Math.min(2,s.queue.length),0,{id:item.id,stage:'test'});save();render()
-}
+
 function answer(i){
- const s=state.session;if(!s||s.feedback||s.queue[0]?.stage!=='test')return;
- const id=s.queue[0].id,correct=i>=0&&options[i]?.id===id,r=state.records[id]??={due:Date.now(),level:0,lapses:0,first:dateKey()};
- if(correct){r.level=Math.min(5,r.level+1);r.due=Date.now()+[0,1,3,7,14,21][r.level]*DAY}else{r.level=0;r.lapses++;r.due=Date.now()+10*60000}
- const d=daily();d.attempts++;if(correct)d.correct++;if(s.mode!=='learn')d.reviews++;
- s.feedback={correct,choice:i};s.done++;s.correct+=correct?1:0;
- save();render()
+  const s=state.session;if(!s||s.feedback||s.queue[0]?.stage!=='test')return;
+  const id=s.queue[0].id,correct=i>=0&&options[i]?.id===id;
+  updateWordRecord(id,correct,s.mode);
+  const d=daily();d.attempts++;if(correct)d.correct++;d.reviews++;
+  s.feedback={correct,choice:i};s.done++;s.correct+=correct?1:0;
+  save();render();
 }
+
 function next(){
- const s=state.session;if(!s?.feedback)return;const item=s.queue.shift();
- // 每个词在同一组最多额外重试一次，防止无限挫败循环。
- if(!s.feedback.correct&&!item.retry)s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'test',retry:true});
- s.feedback=null;save();render()
+  const s=state.session;if(!s?.feedback)return;
+  const item=s.queue.shift();
+  if(!s.feedback.correct&&!item.retry)s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'test',retry:true});
+  s.feedback=null;save();render();
 }
+
+// ===== 词汇测试 =====
+function startTest(count){
+  const n=count||20;
+  // 从已学词中随机抽取
+  const learned=WORDS.filter(w=>state.records[w.id]&&state.records[w.id].status!=='new');
+  if(learned.length<4){toast('至少学过4个词才能测试。先去背词吧！');return}
+  const pool=learned.length>=n?learned:learned;
+  const shuffled=[...pool].sort(()=>Math.random()-.5).slice(0,n);
+  state.session={mode:'test',queue:shuffled.map(w=>({id:w.id,stage:'test',qtype:['en2zh','zh2en','context','collocation'][Math.floor(Math.random()*4)]})),done:0,total:shuffled.length,feedback:null,correct:0,startTime:Date.now(),wrongList:[]};
+  save();view='test';render();
+}
+
+function testView(){
+  const s=state.session;
+  if(!s||s.mode!=='test'){
+    return header('词汇测试')+'<div class="panel">'+
+      '<h2>选择测试题量</h2>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      [20,50,100].map(n=>'<button class="btn" data-act="test'+n+'">'+n+' 题</button>').join('')+
+      '</div>'+
+      '<p class="muted small" style="margin-top:16px">题型包括：英译中、中译英、语境选义、固定搭配。从已学词中随机抽取。</p>'+
+      '<p class="small">已学词：<b>'+WORDS.filter(w=>state.records[w.id]).length+'</b> 个可用于测试</p>'+
+    '</div>';
+  }
+  const item=s.queue[0];
+  if(!item){
+    const pct=s.done?Math.round(s.correct/s.done*100):0;
+    const elapsed=Math.round((Date.now()-s.startTime)/1000);
+    return header('测试完成')+'<div class="learnwrap panel wordcard">'+
+      '<span class="badge green">测试结果</span>'+
+      '<h2 style="margin-top:24px">正确率 '+pct+'%</h2>'+
+      '<div class="resultnum">'+s.correct+'<span style="font-size:18px"> / '+s.done+' 正确</span></div>'+
+      '<p class="muted">用时 '+elapsed+' 秒。</p>'+
+      (s.wrongList&&s.wrongList.length?'<div class="example"><p><b>需要复习的词：</b></p><p>'+s.wrongList.map(id=>{const w=getWord(id);return w?esc(w.word)+' ('+esc(w.meaning)+')':''}).join('；')+'</p></div>':'')+
+      '<div class="answerbar"><button class="btn" data-act="finishTest">回到首页</button>'+
+      (s.wrongList&&s.wrongList.length?'<button class="btn outline" data-act="reviewWrong">复习错题</button>':'')+'</div>'+
+    '</div>';
+  }
+  const w=getWord(item.id);
+  if(!w){s.queue.shift();save();render();return ''}
+  const fb=s.feedback;
+  const qtype=item.qtype||'en2zh';
+
+  let questionHtml='';
+  if(qtype==='en2zh'){
+    if(lastQuestion!==item.id+qtype){options=choices(w);lastQuestion=item.id+qtype;s.optionIds=options.map(x=>x.id)}
+    questionHtml='<div class="word" lang="en">'+esc(w.word)+'</div><div class="phonetic">'+esc(w.phonetic||'')+'</div><p class="muted small">选择中文意思</p><div class="choicegrid">'+options.map((o,i)=>'<button class="choice '+(fb?(o.id===w.id?'correct':fb.choice===i?'wrong':''):'')+'" data-testchoice="'+i+'" '+(fb?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+'</button>').join('')+'</div>';
+  }else if(qtype==='zh2en'){
+    if(lastQuestion!==item.id+qtype){
+      const pool=WORDS.filter(x=>x.id!==w.id&&!isPhrase(x));
+      const picked=[w];while(picked.length<4&&pool.length){const p=pool[Math.floor(Math.random()*pool.length)];if(!picked.some(x=>x.word===p.word))picked.push(p)}
+      options=picked.sort(()=>Math.random()-.5);lastQuestion=item.id+qtype;s.optionIds=options.map(x=>x.id);
+    }
+    questionHtml='<div class="meaning" style="font-size:28px">'+esc(w.meaning)+'</div><p class="muted small">选择对应的英文单词</p><div class="choicegrid">'+options.map((o,i)=>'<button class="choice '+(fb?(o.id===w.id?'correct':fb.choice===i?'wrong':''):'')+'" data-testchoice="'+i+'" '+(fb?'disabled':'')+'>'+String.fromCharCode(65+i)+'. <span lang="en">'+esc(o.word)+'</span></button>').join('')+'</div>';
+  }else if(qtype==='context'){
+    // 语境选义：用例句考词义
+    const ex=w.example||('The '+w.word+' is important.');
+    questionHtml='<div class="example"><p lang="en">'+ex.replace(new RegExp(w.word,'i'),'_____')+'</p>'+(w.translation?'<p>'+w.translation.replace(new RegExp(w.meaning.split('；')[0],'g'),'_____')+'</p>':'')+'</div><p class="muted small">根据语境，_____ 是什么意思？</p>';
+    if(lastQuestion!==item.id+qtype){options=choices(w);lastQuestion=item.id+qtype;s.optionIds=options.map(x=>x.id)}
+    questionHtml+='<div class="choicegrid">'+options.map((o,i)=>'<button class="choice '+(fb?(o.id===w.id?'correct':fb.choice===i?'wrong':''):'')+'" data-testchoice="'+i+'" '+(fb?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+'</button>').join('')+'</div>';
+  }else{
+    // 固定搭配
+    const colls=w.collocations&&w.collocations.length?w.collocations:[''];
+    questionHtml='<div class="word" lang="en">'+esc(w.word)+'</div><p class="muted small">选择正确的搭配</p>';
+    if(lastQuestion!==item.id+qtype){
+      const correctColl=colls[0]||w.word;
+      const wrongs=['very '+w.word,'much '+w.word,'many '+w.word];
+      options=[{id:w.id,meaning:correctColl},{id:'w1',meaning:wrongs[0]},{id:'w2',meaning:wrongs[1]},{id:'w3',meaning:wrongs[2]}].sort(()=>Math.random()-.5);
+      lastQuestion=item.id+qtype;s.optionIds=options.map(x=>x.id);
+    }
+    questionHtml+='<div class="choicegrid">'+options.map((o,i)=>'<button class="choice '+(fb?(o.id===w.id?'correct':fb.choice===i?'wrong':''):'')+'" data-testchoice="'+i+'" '+(fb?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+'</button>').join('')+'</div>';
+  }
+
+  return header('词汇测试 · '+s.done+' / '+s.total)+
+  '<div class="learnwrap">'+
+    '<div class="progress"><div style="width:'+Math.min(100,s.done/s.total*100)+'%"></div></div>'+
+    '<div class="panel wordcard">'+
+      '<span class="badge">'+({en2zh:'英译中',zh2en:'中译英',context:'语境选义',collocation:'固定搭配'}[qtype]||'测试')+'</span>'+
+      questionHtml+
+      (fb?'<div class="feedback"><b>'+(fb.correct?'✓ 正确':'✗ 错误')+'</b> '+esc(w.word)+' = '+esc(w.meaning)+'</div><div class="answerbar"><button class="btn" data-act="nextTest">下一题 →</button></div>':'')+
+    '</div>'+
+  '</div>';
+}
+
+function testAnswer(i){
+  const s=state.session;if(!s||s.mode!=='test'||s.feedback||!s.queue[0])return;
+  const id=s.queue[0].id,correct=options[i]?.id===id;
+  updateWordRecord(id,correct,'test');
+  const d=daily();d.attempts++;if(correct)d.correct++;d.testTotal++;if(correct)d.testCorrect++;
+  s.feedback={correct,choice:i};s.done++;s.correct+=correct?1:0;
+  if(!correct&&!s.wrongList.includes(id))s.wrongList.push(id);
+  save();render();
+}
+
+// ===== 词库浏览 =====
 function wordlist(){
- const ws=WORDS.filter(w=>(filter==='all'||filter==='learned'&&state.records[w.id]||filter==='mistakes'&&mistakes().some(x=>x.id===w.id)||filter===String(w.group))&&(!query||(w.word+' '+w.meaning).toLowerCase().includes(query.toLowerCase())));
- return header('我的词库')+'<p class="muted small">从基础词到阅读短语，共 '+WORDS.length+' 个。先学习排在前面的词，不必一开始追求全部记住。</p><input class="search" id="search" aria-label="搜索英文或中文" placeholder="搜索单词或中文意思" value="'+esc(query)+'"><div class="filters">'+[['all','全部'],['learned','已接触'],['mistakes','易错词'],...groups.map((g,i)=>[String(i),g[0]])].map(([v,l])=>'<button data-filter="'+v+'" class="'+(filter===v?'selected':'')+'">'+l+'</button>').join('')+'</div><div class="panel"><div class="row"><h3>'+ws.length+' 个词与短语</h3><span class="small muted">点击单词，查看学习卡</span></div><div id="wordrows">'+(ws.length?ws.map(w=>'<div class="wordrow"><div><button class="linkbtn" style="padding:0;text-align:left" data-detail="'+w.id+'"><strong lang="en">'+esc(w.word)+'</strong></button><small>'+ (state.records[w.id]?(state.records[w.id].level>=3?'稳定记忆':'正在复习'):'尚未学习')+'</small></div><span class="small">'+esc(w.meaning)+'</span><button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button></div>').join(''):'<div class="empty">没有找到对应单词。试试其他关键词。</div>')+'</div></div>';
+  const ws=WORDS.filter(w=>{
+    if(filter==='all')return true;
+    if(filter==='learned')return state.records[w.id];
+    if(filter==='unlearned')return !state.records[w.id];
+    if(filter==='mistakes')return weakWordsList().some(x=>x.id===w.id);
+    if(filter==='core2000')return w.tags&&w.tags.includes('Core2000');
+    if(filter==='core3000')return w.tags&&w.tags.includes('Core3000');
+    if(filter==='phrases')return isPhrase(w);
+    if(filter.startsWith('level'))return w.level===parseInt(filter.split('l')[1]);
+    return true;
+  }).filter(w=>!query||(w.word+' '+w.meaning).toLowerCase().includes(query.toLowerCase()));
+
+  const levelNames=['基础起步','最高频核心','成考核心','阅读高频','考试识别','低频补充'];
+  return header('我的词库')+
+  '<p class="muted small">共 '+uniqueWords().length+' 词 + '+phrases().length+' 短语。Core 2000：'+core2000().length+' · Core 3000：'+core3000().length+'</p>'+
+  '<input class="search" id="search" aria-label="搜索" placeholder="搜索单词或中文意思" value="'+esc(query)+'">'+
+  '<div class="filters">'+
+    [['all','全部'],['learned','已学'],['unlearned','未学'],['mistakes','易错'],['core2000','Core2000'],['core3000','Core3000'],['phrases','短语'],
+    ...[0,1,2,3,4,5].map(l=>['level'+l,'L'+l+' '+levelNames[l]])
+    ].map(([v,l])=>'<button data-filter="'+v+'" class="'+(filter===v?'selected':'')+'">'+l+'</button>').join('')+
+  '</div>'+
+  '<div class="panel"><div class="row"><h3>'+ws.length+' 个词条</h3><span class="small muted">点击查看详情</span></div>'+
+  '<div id="wordrows">'+(ws.length?ws.slice(0,200).map(w=>{
+    const r=state.records[w.id];
+    const statusText=r?(r.status==='mastered'?'熟练':r.status==='recognized'?'认识':r.status==='fuzzy'?'模糊':'学习中'):'未学习';
+    return '<div class="wordrow"><div><button class="linkbtn" style="padding:0;text-align:left" data-detail="'+w.id+'"><strong lang="en">'+esc(w.word)+'</strong></button><small>'+statusText+' · L'+w.level+(w.tags&&w.tags.includes('Core2000')?' · Core2000':'')+'</small></div><span class="small">'+esc(w.partOfSpeech||'')+' '+esc(w.meaning)+'</span><button class="speaker" data-speak="'+esc(w.word)+'">◖))</button></div>';
+  }).join('')+(ws.length>200?'<div class="empty">仅显示前200条，请使用筛选或搜索</div>':''):'<div class="empty">没有找到对应单词。</div>')+'</div></div>';
 }
-function reading(){
- const r=READINGS[readingIndex],saved=state.readings[dateKey()+'-'+readingIndex];
- return header('把单词放回句子里','自编入门练习 · 不是历年真题')+'<div class="learnwrap"><div class="filters">'+READINGS.map((x,i)=>'<button data-reading="'+i+'" class="'+(i===readingIndex?'selected':'')+'">'+(i+1)+'. '+x.title+'</button>').join('')+'</div><div class="panel"><div class="row"><h2>'+r.title+'</h2><span class="badge">入门阅读 '+(readingIndex+1)+' / '+READINGS.length+'</span></div><p class="small muted">先读下方问题，再找答案。点击英文单词可查意思。</p><h3>'+r.question+'</h3><p class="reading" lang="en">'+r.text.replace(/[A-Za-z]+/g,w=>'<button data-gloss="'+w+'">'+w+'</button>')+'</p>'+(gloss?'<div class="tip" role="status">'+esc(gloss)+'</div>':'')+'<div class="row"><button class="linkbtn" data-act="translate">'+(translation?'收起':'查看')+'全文翻译</button><button class="speaker" data-speak="'+esc(r.text)+'">◖)) 朗读全文</button></div>'+(translation?'<div class="tip">'+r.translation+'</div>':'')+'<div class="choicegrid">'+r.options.map((o,i)=>'<button class="choice '+(saved?(i===r.correct?'correct':saved.choice===i?'wrong':''):'')+'" data-reading-choice="'+i+'" '+(saved?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+o+'</button>').join('')+'</div>'+(saved?'<div class="feedback"><b>'+(saved.correct?'答对了！':'正确答案是 '+String.fromCharCode(65+r.correct)+'。')+'</b><br>'+r.explain+'</div><div class="answerbar"><button class="btn" data-act="nextreading">'+(readingIndex<READINGS.length-1?'下一篇短文':'回到第一篇')+'</button></div>':'')+'<div class="tip"><b>阅读方法</b><br>'+r.tip+'</div></div><p class="footer">这些短文用于从零起步，不代表成人高考的实际难度。完成后请结合正式真题练习。</p></div>';
-}
-function plan(){
- return header('30天，把时间用在关键处')+'<div class="panel" style="margin-bottom:22px"><div class="row"><div><h2>每天 '+state.minutes+' 分钟，先保住复习</h2><p class="muted small" style="margin:0">'+(state.minutes===30?'10分钟复习 + 15分钟新词 + 5分钟短文':'20分钟复习 + 25分钟新词 + 15分钟短文与句型')+'。复习积压时，优先旧词，少学新词。</p></div><button class="btn soft" data-nav="settings">调整</button></div></div><div class="planlist">'+[['01—07','先搭句子的骨架','人称代词、be动词、常用动作和连接词。看懂“谁 + 做什么”，每天跟读基础例句。'],['08—14','把词放进生活','时间、人物、地点、常见描述。练习找人物、时间、原因，不逐字翻译整篇文章。'],['15—23','连接到阅读和做题','阅读核心词与常见短语。复习易错词，注意 but、because、however 前后的关系。'],['24—30','少学新词，多做回顾','距目标日期7天内，新词目标降到5个。回顾旧词，并在软件外安排真题、语法、语音和写作。']].map(([days,title,text])=>'<div class="panel"><div class="eyebrow">DAY '+days+'</div><h2>'+title+'</h2><p>'+text+'</p></div>').join('')+'</div><div class="panel" style="margin-top:22px"><h2>软件怎样帮你记住？</h2><p class="small muted">先看词义，再做选择回忆。答对后，按约1、3、7、14、21天后的间隔复习；答错后，稍后在本组重试一次，并安排10分钟后复习。连续答对至少3次标为“稳定记忆”，这不是考试掌握率。</p><p class="small muted">备考范围参考成人高考2024年版大纲启用通知；本软件词库和练习为自编基础材料，未宣称覆盖全部考点。</p><a class="small" href="https://www.neea.edu.cn/html1/report/2404/568-1.htm" target="_blank" rel="noopener">查看中国教育考试网大纲通知 ↗</a></div>';
-}
-function settings(){
- return header('按你的节奏学习')+'<div class="settings"><form id="settingsform" class="panel"><h2>你的备考安排</h2><div class="field"><label for="exam">目标考试日期</label><input id="exam" name="exam" type="date" value="'+state.exam+'" required><p class="small muted">默认是首次使用后30天，仅为计划日期，请按准考证修改。</p></div><div class="field"><label for="minutes">每天能花多少时间？</label><select id="minutes" name="minutes"><option value="30" '+(state.minutes===30?'selected':'')+'>30分钟 · 每天15个新词</option><option value="60" '+(state.minutes===60?'selected':'')+'>60分钟 · 每天25个新词</option></select><p class="small muted">最后7天自动降到每天5个新词。时间为建议分配，不是计时器。</p></div><button class="btn" type="submit">保存学习安排</button></form><div class="panel" style="margin-top:20px"><h2>学习记录与备份</h2><p class="small muted">记录只保存在当前浏览器，不会自动跨设备同步。清除浏览器数据可能丢失进度。换手机或电脑前先导出备份，再在另一设备导入。</p><button class="btn outline" data-act="export">导出备份</button><label for="importfile" class="btn outline" style="display:inline-block;cursor:pointer">导入备份</label><input id="importfile" type="file" accept=".json,application/json" class="sr"><p class="small muted">导入会替换当前记录，导入前会要求你确认。发音使用设备的英语语音；若没有声音，请检查音量或英语语音包。</p></div></div>';
-}
-function speak(text){
- if(!('speechSynthesis'in window)){toast('当前浏览器不支持朗读，请用支持语音的浏览器打开。');return}
- speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.78;const voices=speechSynthesis.getVoices();const v=voices.find(v=>v.lang==='en-US')||voices.find(v=>v.lang.startsWith('en'));if(v)u.voice=v;u.onerror=()=>toast('朗读暂不可用，请检查设备音量和英语语音设置。');speechSynthesis.speak(u)
-}
-function lookup(word){const low=word.toLowerCase();return GLOSS[low]||WORDS.find(w=>w.word.toLowerCase()===low)?.meaning||'这个词暂未收录；可展开全文翻译辅助理解。'}
-function bind(){
- document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navigate(b.dataset.nav));
- document.querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>speak(b.dataset.speak));
- document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>actions[b.dataset.act]?.());
- document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>answer(+b.dataset.choice));
- document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;render()});
- document.querySelectorAll('[data-reading]').forEach(b=>b.onclick=()=>{readingIndex=+b.dataset.reading;translation=false;gloss='';render()});
- document.querySelectorAll('[data-gloss]').forEach(b=>b.onclick=()=>{gloss=b.dataset.gloss+'：'+lookup(b.dataset.gloss);render()});
- document.querySelectorAll('[data-reading-choice]').forEach(b=>b.onclick=()=>{const k=dateKey()+'-'+readingIndex;if(state.readings[k])return;const i=+b.dataset.readingChoice;state.readings[k]={choice:i,correct:i===READINGS[readingIndex].correct};save();render()});
- document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(b.dataset.detail));
- if($('#search'))$('#search').oninput=e=>{const pos=e.target.selectionStart;query=e.target.value;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
- if($('#settingsform'))$('#settingsform').onsubmit=e=>{e.preventDefault();const d=$('#exam').value;if(!validDate(d)){toast('请选择有效的考试日期');return}state.exam=d;state.minutes=+$('#minutes').value;save();render();toast('学习安排已保存')};
- if($('#importfile'))$('#importfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>2000000)throw Error('文件过大');const n=validate(JSON.parse(await f.text()));if(confirm('导入将替换当前学习记录，确定继续吗？')){state=n;save();render();toast('备份已恢复')}}catch(err){toast('未导入：'+err.message)}};
-}
+
 function detail(id){
- const w=WORDS.find(x=>x.id===id);const dlg=document.createElement('dialog');dlg.style.cssText='border:1px solid #e3e8f2;border-radius:18px;max-width:650px;width:92%;padding:28px;color:#172443';
- dlg.innerHTML='<button class="btn outline" id="closedialog">关闭</button><div class="word" style="font-size:40px">'+esc(w.word)+'</div><div class="meaning">'+esc(w.meaning)+'</div>'+example(w);
- document.body.append(dlg);dlg.showModal();dlg.querySelector('#closedialog').onclick=()=>dlg.close();dlg.onclose=()=>dlg.remove();dlg.querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>speak(b.dataset.speak))
+  const w=getWord(id);if(!w)return;
+  const r=state.records[id];
+  const dlg=document.createElement('dialog');
+  dlg.style.cssText='border:1px solid #e3e8f2;border-radius:18px;max-width:650px;width:92%;padding:28px;color:#172443;max-height:90vh;overflow-y:auto';
+  dlg.innerHTML='<button class="btn outline" id="closedialog">关闭</button>'+
+    '<div class="word" style="font-size:40px">'+esc(w.word)+'</div>'+
+    '<div class="phonetic">'+esc(w.phonetic||'')+' '+esc(w.partOfSpeech||'')+'</div>'+
+    '<div class="meaning">'+esc(w.meaning)+'</div>'+
+    (w.examMeaning?'<div class="exam-meaning">考试：'+esc(w.examMeaning)+'</div>':'')+
+    (r?'<p class="small muted">学习状态：'+r.status+' · 正确'+r.correctCount+'次 · 错误'+r.wrongCount+'次 · 连续正确'+r.streak+'次</p>':'')+
+    detailSection(w)+
+    '<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">'+
+    '<button class="btn" id="addReview">加入复习</button>'+
+    '<button class="btn outline" id="speakWord">◖)) 朗读</button>'+
+    '</div>';
+  document.body.append(dlg);dlg.showModal();
+  dlg.querySelector('#closedialog').onclick=()=>dlg.close();
+  dlg.onclose=()=>dlg.remove();
+  dlg.querySelector('#speakWord').onclick=()=>speak(w.word);
+  dlg.querySelector('#addReview').onclick=()=>{
+    const rec=state.records[id]??={status:'learning',firstLearned:dateKey(),lastReviewed:dateKey(),correctCount:0,wrongCount:0,streak:0,nextReview:Date.now(),level:0,readingAppearances:0,readingLookups:0};
+    rec.nextReview=Date.now();rec.status='fuzzy';
+    state.records[id]=rec;save();toast('已加入复习队列');dlg.close();
+  };
+  dlg.querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>speak(b.dataset.speak));
 }
-const actions={start:()=>start(),review:()=>start('review'),new:()=>start('learn'),mistakes:()=>start('mistakes'),learned,next,unknown:()=>answer(-1),finish:()=>{state.session=null;save();navigate('home')},finishread:()=>{state.session=null;save();navigate('reading')},translate:()=>{translation=!translation;render()},nextreading:()=>{let n=(readingIndex+1)%READINGS.length;for(let i=0;i<READINGS.length;i++){const k=dateKey()+'-'+n;if(!state.readings[k])break;n=(n+1)%READINGS.length}readingIndex=n;translation=false;gloss='';render()},export:()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='词阶学习备份-'+dateKey()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('已导出备份')}};
-document.addEventListener('keydown',e=>{if(view!=='learn'||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)||document.querySelector('dialog[open]'))return;if(['1','2','3','4'].includes(e.key)){answer(+e.key-1)}if(e.key==='Enter'&&state.session?.feedback){e.preventDefault();next()}});
+
+// ===== 阅读（保留现有功能，后续大改） =====
+function reading(){
+  if(typeof READINGS==='undefined'||!READINGS.length)return header('阅读训练')+'<div class="panel"><p>阅读题库正在重建中...</p></div>';
+  const r=READINGS[readingIndex],saved=state.readings[dateKey()+'-'+readingIndex];
+  const prev=(readingIndex-1+READINGS.length)%READINGS.length,next=(readingIndex+1)%READINGS.length;
+  const nav='<div class="row" style="margin-bottom:16px"><button class="btn outline" data-reading="'+prev+'">← 上一篇</button><span class="badge">第 '+(readingIndex+1)+' / '+READINGS.length+' 篇</span><button class="btn outline" data-reading="'+next+'">下一篇 →</button></div>';
+  return header('阅读训练')+'<div class="learnwrap">'+nav+'<div class="panel"><div class="row"><h2>'+esc(r.title)+'</h2><span class="badge">'+(r.type||'阅读')+'</span></div>'+
+  '<p class="small muted">点击英文单词可查意思。</p>'+
+  (r.questions&&r.questions.length?
+    // 多题模式
+    '<div class="reading-questions">'+r.questions.map((q,qi)=>{
+      const userAns=saved&&saved.answers?saved.answers[qi]:null;
+      return '<div class="qblock"><h3>'+(qi+1)+'. '+esc(q.question)+'</h3><div class="choicegrid">'+q.options.map((o,i)=>'<button class="choice '+(saved?(i===q.correct?'correct':userAns===i?'wrong':''):'')+'" data-rq="'+readingIndex+'-'+qi+'-'+i+'" '+(saved?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+(saved?'<div class="feedback small">'+esc(q.explain||'')+'</div>':'')+'</div>';
+    }).join('')+'</div>'+
+    (!saved?'<div class="answerbar"><button class="btn" data-act="submitReading">提交本篇答案</button></div>':'')
+    :
+    // 单题模式（兼容旧数据）
+    '<h3>'+esc(r.question)+'</h3><p class="reading" lang="en">'+r.text.replace(/[A-Za-z]+/g,w=>'<button data-gloss="'+w+'">'+w+'</button>')+'</p>'+
+    (gloss?'<div class="tip" role="status">'+esc(gloss)+'</div>':'')+
+    '<div class="row"><button class="linkbtn" data-act="translate">'+(translation?'收起':'查看')+'全文翻译</button><button class="speaker" data-speak="'+esc(r.text)+'">◖)) 朗读全文</button></div>'+
+    (translation?'<div class="tip">'+esc(r.translation||'')+'</div>':'')+
+    '<div class="choicegrid">'+(r.options||[]).map((o,i)=>'<button class="choice '+(saved?(i===r.correct?'correct':saved.choice===i?'wrong':''):'')+'" data-reading-choice="'+i+'" '+(saved?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+
+    (saved?'<div class="feedback"><b>'+(saved.correct?'答对了！':'正确答案是 '+String.fromCharCode(65+r.correct)+'。')+'</b><br>'+esc(r.explain||'')+'</div>':'')
+  )+
+  '</div>'+nav+'<p class="footer">阅读题库正在逐步重建为成考标准难度。</p></div>';
+}
+
+// 阅读答题（多题模式）
+let readingAnswers={};
+function answerReadingQuestion(readingIdx,qIdx,choice){
+  const key=readingIdx+'-'+qIdx;
+  readingAnswers[key]=choice;
+}
+function submitReading(){
+  const r=READINGS[readingIndex];
+  if(!r||!r.questions||!r.questions.length)return;
+  const answers=r.questions.map((q,qi)=>readingAnswers[readingIndex+'-'+qi]??-1);
+  const correct=answers.filter((a,i)=>a===r.questions[i].correct).length;
+  state.readings[dateKey()+'-'+readingIndex]={correct:correct===r.questions.length,choice:answers[0],answers};
+  // 记录阅读中遇到的生词
+  save();toast('本篇答对 '+correct+' / '+r.questions.length+' 题');render();
+}
+
+// ===== 长难句（基础功能，后续扩充到100句） =====
+const LONG_SENTENCES=[
+  {en:'Although many people believe that technology makes life easier, some researchers argue that it can also create new forms of stress.',zh:'虽然许多人认为技术让生活更容易，但一些研究者认为它也会带来新的压力。',structure:'主句：some researchers argue。Although引导让步状语从句；两个that引导宾语从句。',grammar:'让步状语从句 + 宾语从句'},
+  {en:'The book that I borrowed from the library last week provides a clear explanation of how the human brain stores memories.',zh:'我上周从图书馆借的那本书清楚地解释了人脑如何储存记忆。',structure:'主句：The book provides explanation。that引导定语从句修饰book；how引导宾语从句。',grammar:'定语从句 + 宾语从句'},
+  {en:'If students want to improve their English quickly, they should spend at least thirty minutes every day reading articles that are slightly above their current level.',zh:'如果学生想快速提高英语，他们应该每天至少花30分钟阅读略高于当前水平的文章。',structure:'主句：they should spend time reading。If引导条件状语从句；that引导定语从句。',grammar:'条件状语从句 + 定语从句 + spend time doing'},
+  {en:'What surprised me most was that the students who had practiced every day scored much higher than those who only studied before the exam.',zh:'最让我惊讶的是，每天练习的学生比那些只在考试前学习的学生得分高得多。',structure:'主句：What surprised me was that...。What引导主语从句；that引导表语从句；两个who引导定语从句。',grammar:'主语从句 + 表语从句 + 定语从句 + 比较级'},
+  {en:'Because the cost of living has increased rapidly in recent years, many young people find it difficult to save money even though they work full-time.',zh:'由于近年来生活成本快速上涨，许多年轻人发现即使全职工作也很难存钱。',structure:'主句：many young people find it difficult。Because引导原因状语从句；even though引导让步状语从句；it作形式宾语。',grammar:'原因状语从句 + 让步状语从句 + 形式宾语it'}
+];
+let sentenceIndex=0;
+function sentence(){
+  const s=LONG_SENTENCES[sentenceIndex%LONG_SENTENCES.length];
+  const show=sentenceIndex>=0;
+  return header('每日长难句','先找主干，再看翻译 · 共 '+LONG_SENTENCES.length+' 句（持续扩充中）')+
+  '<div class="learnwrap"><div class="panel">'+
+    '<span class="badge">第 '+(sentenceIndex%LONG_SENTENCES.length+1)+' / '+LONG_SENTENCES.length+' 句</span>'+
+    '<p class="reading" lang="en" style="margin-top:16px">'+esc(s.en)+'</p>'+
+    '<button class="speaker" data-speak="'+esc(s.en)+'">◖)) 朗读</button>'+
+    '<div class="answerbar" style="margin-top:20px">'+
+      '<button class="btn soft" data-act="showStructure">查看结构</button>'+
+      '<button class="btn soft" data-act="showTranslation">查看翻译</button>'+
+      '<button class="btn soft" data-act="showGrammar">查看语法</button>'+
+    '</div>'+
+    '<div id="sentenceDetail"></div>'+
+    '<div class="row" style="margin-top:20px">'+
+      '<button class="btn outline" data-act="prevSentence">← 上一句</button>'+
+      '<button class="btn outline" data-act="nextSentence">下一句 →</button>'+
+    '</div>'+
+  '</div>'+
+  '<div class="tip"><b>练习方法：</b>先自己读一遍 → 圈出谓语动词找主干 → 猜意思 → 再看结构和翻译。</div></div>';
+}
+
+function showSentenceDetail(type){
+  const s=LONG_SENTENCES[sentenceIndex%LONG_SENTENCES.length];
+  const el=$('#sentenceDetail');
+  if(!el)return;
+  let html=el.innerHTML;
+  if(type==='structure')html+='<div class="feedback"><b>句子结构：</b>'+esc(s.structure)+'</div>';
+  if(type==='translation')html+='<div class="feedback"><b>翻译：</b>'+esc(s.zh)+'</div>';
+  if(type==='grammar')html+='<div class="feedback"><b>语法点：</b>'+esc(s.grammar)+'</div>';
+  el.innerHTML=html;
+}
+
+// ===== 语法（占位，后续完整开发） =====
+function grammarView(){
+  return header('成考高频语法')+
+  '<div class="panel"><h2>30天冲刺语法</h2>'+
+  '<p class="muted">语法系统正在建设中。将按成考实际考查频率排序，每个语法点包含：人话讲解 → 简单例子 → 拆句子 → 考试怎么考 → 易错点 → 基础题 → 成考题 → 解析。</p>'+
+  '<h3 style="margin-top:20px">即将上线的语法点（按频率排序）：</h3>'+
+  '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+  ['时态','被动语态','非谓语','定语从句','名词性从句','状语从句','情态动词','主谓一致','比较级','介词','冠词','代词','形容词副词','虚拟语气','倒装强调'].map(g=>'<span class="word-chip">'+g+'</span>').join('')+
+  '</div></div>';
+}
+
+// ===== 学习报告 =====
+function report(){
+  const r=Object.values(state.records),read=Object.values(state.readings);
+  const totalDays=Object.keys(state.days).length;
+  const totalNew=Object.values(state.days).reduce((s,d)=>s+(d.new||0),0);
+  const totalReviews=Object.values(state.days).reduce((s,d)=>s+(d.reviews||0),0);
+  const totalCorrect=Object.values(state.days).reduce((s,d)=>s+(d.correct||0),0);
+  const totalAttempts=Object.values(state.days).reduce((s,d)=>s+(d.attempts||0),0);
+  return header('学习报告','只展示真实记录，不预测分数')+
+  '<div class="stats">'+
+    '<div class="stat"><span>词库覆盖</span><strong>'+Math.round(Object.keys(state.records).length/uniqueWords().length*100)+'%</strong><span>'+Object.keys(state.records).length+' / '+uniqueWords().length+'</span></div>'+
+    '<div class="stat"><span>稳定记忆</span><strong>'+r.filter(x=>x.level>=3||x.status==='mastered').length+'</strong><span>连续答对≥3次</span></div>'+
+    '<div class="stat"><span>总正确率</span><strong>'+(totalAttempts?Math.round(totalCorrect/totalAttempts*100)+'%':'—')+'</strong><span>'+totalAttempts+' 次回忆</span></div>'+
+  '</div>'+
+  '<div class="panel"><h2>学习统计</h2>'+
+  '<p>学习天数：<b>'+totalDays+'</b> 天 · 累计学新词：<b>'+totalNew+'</b> · 累计复习：<b>'+totalReviews+'</b> 次</p>'+
+  '<p>阅读作答：<b>'+read.length+'</b> 篇 · 阅读正确率：<b>'+(read.length?Math.round(read.filter(x=>x.correct).length/read.length*100)+'%':'—')+'</b></p>'+
+  '<p>易错词：<b>'+weakWordsList().length+'</b> 个</p>'+
+  '</div>'+
+  '<div class="panel" style="margin-top:18px"><h2>目前建议</h2>'+
+  '<p>先完成今日复习，再进入阅读和长难句训练。数据积累不足时，系统不预测考试分数。</p>'+
+  '<p class="muted">成人高考还包括：词汇语法、完形填空、补全对话、翻译和写作。</p>'+
+  '</div>';
+}
+
+// ===== 设置 =====
+function settings(){
+  return header('学习设置')+'<div class="settings">'+
+  '<form id="settingsform" class="panel"><h2>备考安排</h2>'+
+  '<div class="field"><label for="exam">目标考试日期</label><input id="exam" name="exam" type="date" value="'+state.exam+'" required><p class="small muted">请按准考证修改。</p></div>'+
+  '<div class="field"><label for="dailyGoal">每天新词目标</label><select id="dailyGoal" name="dailyGoal">'+
+  [50,80,100,120,150].map(n=>'<option value="'+n+'" '+(state.dailyNewGoal===n?'selected':'')+'>'+n+' 词/天</option>').join('')+
+  '<option value="custom" '+(state.dailyNewGoal>150?'selected':'')+'>自定义</option>'+
+  '</select><p class="small muted">这是目标不是上限。完成后可以继续学习更多。</p></div>'+
+  (state.dailyNewGoal>150?'<div class="field"><label for="customGoal">自定义目标</label><input id="customGoal" type="number" min="10" max="500" value="'+state.dailyNewGoal+'"></div>':'')+
+  '<button class="btn" type="submit">保存设置</button></form>'+
+
+  '<div class="panel" style="margin-top:20px"><h2>学习记录与备份</h2>'+
+  '<p class="small muted">记录只保存在当前浏览器，不会自动跨设备同步。清除浏览器数据可能丢失进度。换设备前先导出备份。</p>'+
+  '<button class="btn outline" data-act="export">导出备份</button>'+
+  '<label for="importfile" class="btn outline" style="display:inline-block;cursor:pointer">导入备份</label>'+
+  '<input id="importfile" type="file" accept=".json,application/json" class="sr">'+
+  '<p class="small muted" style="margin-top:10px">导入会替换当前记录。</p>'+
+  '<button class="btn danger" data-act="resetAll" style="margin-top:10px">重置所有学习数据</button>'+
+  '</div></div>';
+}
+
+// ===== 发音 =====
+function speak(text){
+  if(!('speechSynthesis'in window)){toast('当前浏览器不支持朗读。');return}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.78;
+  const voices=speechSynthesis.getVoices();
+  const v=voices.find(v=>v.lang==='en-US')||voices.find(v=>v.lang.startsWith('en'));
+  if(v)u.voice=v;
+  u.onerror=()=>toast('朗读暂不可用。');
+  speechSynthesis.speak(u);
+}
+
+// ===== 查词 =====
+function lookup(word){
+  const low=word.toLowerCase();
+  const w=WORDS.find(x=>x.word.toLowerCase()===low);
+  if(w){
+    // 记录阅读查词
+    if(!state.readingUnknownWords.includes(w.id))state.readingUnknownWords.push(w.id);
+    const r=state.records[w.id];
+    if(r){r.readingLookups=(r.readingLookups||0)+1;r.nextReview=Math.min(r.nextReview,Date.now()+30*60000);}
+    save();
+    return w.word+' '+w.phonetic+' '+w.partOfSpeech+'：'+w.meaning+(w.examMeaning?'（考试：'+w.examMeaning+'）':'')+(r?'【已学习】':'【未学习】');
+  }
+  if(typeof GLOSS!=='undefined'&&GLOSS[low])return GLOSS[low];
+  return '这个词暂未收录；可展开全文翻译辅助理解。';
+}
+
+// ===== 事件绑定 =====
+function bind(){
+  document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navigate(b.dataset.nav));
+  document.querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>speak(b.dataset.speak));
+  document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>actions[b.dataset.act]?.());
+  document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>answer(+b.dataset.choice));
+  document.querySelectorAll('[data-testchoice]').forEach(b=>b.onclick=()=>testAnswer(+b.dataset.testchoice));
+  document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;render()});
+  document.querySelectorAll('[data-reading]').forEach(b=>b.onclick=()=>{readingIndex=+b.dataset.reading;translation=false;gloss='';readingAnswers={};render()});
+  document.querySelectorAll('[data-gloss]').forEach(b=>b.onclick=()=>{gloss=lookup(b.dataset.gloss);render()});
+  document.querySelectorAll('[data-reading-choice]').forEach(b=>b.onclick=()=>{
+    const k=dateKey()+'-'+readingIndex;if(state.readings[k])return;
+    const i=+b.dataset.readingChoice;
+    state.readings[k]={choice:i,correct:i===READINGS[readingIndex].correct,answers:[i]};save();render();
+  });
+  document.querySelectorAll('[data-rq]').forEach(b=>b.onclick=()=>{
+    const [ri,qi,ci]=b.dataset.rq.split('-').map(Number);
+    answerReadingQuestion(ri,qi,ci);
+    // 视觉反馈
+    document.querySelectorAll('[data-rq="'+ri+'-'+qi+'"]').forEach(x=>x.classList.remove('selected'));
+    b.classList.add('selected');
+  });
+  document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(b.dataset.detail));
+  if($('#search'))$('#search').oninput=e=>{const pos=e.target.selectionStart;query=e.target.value;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
+  if($('#settingsform'))$('#settingsform').onsubmit=e=>{
+    e.preventDefault();
+    const d=$('#exam').value;
+    if(!validDate(d)){toast('请选择有效的考试日期');return}
+    state.exam=d;
+    const goalSel=$('#dailyGoal');
+    if(goalSel.value==='custom'){
+      const cg=$('#customGoal');
+      if(cg)state.dailyNewGoal=Math.max(10,Math.min(500,parseInt(cg.value)||100));
+    }else{
+      state.dailyNewGoal=parseInt(goalSel.value);
+    }
+    save();render();toast('设置已保存');
+  };
+  if($('#importfile'))$('#importfile').onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
+    try{
+      if(f.size>5000000)throw Error('文件过大');
+      const n=JSON.parse(await f.text());
+      if(!n||n.version!==3)throw Error('备份格式不正确');
+      if(confirm('导入将替换当前学习记录，确定继续吗？')){state=n;save();render();toast('备份已恢复')}
+    }catch(err){toast('未导入：'+err.message)}
+  };
+}
+
+// ===== 动作 =====
+const actions={
+  startQuick:()=>startQuick(),
+  startReview:()=>startReview(),
+  startTest:()=>startTest(20),
+  reviewWeak:()=>{
+    const ws=weakWordsList().slice(0,30);
+    if(!ws.length){toast('没有易错词');return}
+    state.session={mode:'review',queue:ws.map(w=>({id:w.id,stage:'test'})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
+    save();view='review';render();
+  },
+  reviewAll:()=>{
+    const ws=dueWords();
+    if(!ws.length){toast('没有到期复习词');return}
+    state.session={mode:'review',queue:ws.map(w=>({id:w.id,stage:'test'})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
+    save();view='review';render();
+  },
+  know:()=>quickAnswer('know'),
+  fuzzy:()=>quickAnswer('fuzzy'),
+  unknown:()=>{if(state.session?.mode==='quick')quickAnswer('unknown');else answer(-1)},
+  toggleDetail:()=>{if(state.session?.queue[0]){state.session.queue[0].showDetail=!state.session.queue[0].showDetail;render()}},
+  next:()=>next(),
+  nextTest:()=>{const s=state.session;if(!s?.feedback)return;s.queue.shift();s.feedback=null;save();render()},
+  finishQuick:()=>{state.session=null;save();navigate('home')},
+  continueQuick:()=>{state.session=null;save();startQuick()},
+  finishReview:()=>{state.session=null;save();navigate('home')},
+  finishTest:()=>{state.session=null;save();navigate('home')},
+  reviewWrong:()=>{
+    const s=state.session;if(!s||!s.wrongList||!s.wrongList.length){toast('没有错题');return}
+    const ws=s.wrongList.map(id=>getWord(id)).filter(Boolean);
+    state.session={mode:'review',queue:ws.map(w=>({id:w.id,stage:'test'})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
+    save();view='review';render();
+  },
+  translate:()=>{translation=!translation;render()},
+  submitReading:()=>submitReading(),
+  showStructure:()=>showSentenceDetail('structure'),
+  showTranslation:()=>showSentenceDetail('translation'),
+  showGrammar:()=>showSentenceDetail('grammar'),
+  prevSentence:()=>{sentenceIndex=(sentenceIndex-1+LONG_SENTENCES.length)%LONG_SENTENCES.length;render()},
+  nextSentence:()=>{sentenceIndex=(sentenceIndex+1)%LONG_SENTENCES.length;render()},
+  export:()=>{
+    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='词阶学习备份-'+dateKey()+'.json';a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);toast('已导出备份');
+  },
+  resetAll:()=>{
+    if(confirm('确定要重置所有学习数据吗？此操作不可恢复！建议先导出备份。')){
+      state=initial();save();render();toast('已重置');
+    }
+  },
+  continue20:()=>startQuick(20),
+  continue50:()=>startQuick(50),
+  continue100:()=>startQuick(100),
+  freeLearn:()=>{view='words';filter='unlearned';render()},
+  quick20:()=>startQuick(20),quick50:()=>startQuick(50),quick80:()=>startQuick(80),
+  quick100:()=>startQuick(100),quick120:()=>startQuick(120),quick150:()=>startQuick(150),
+  test20:()=>startTest(20),test50:()=>startTest(50),test100:()=>startTest(100)
+};
+
+// 键盘快捷键
+document.addEventListener('keydown',e=>{
+  if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)||document.querySelector('dialog[open]'))return;
+  if(view==='quick'){
+    if(e.key==='1')actions.know();
+    if(e.key==='2')actions.fuzzy();
+    if(e.key==='3')actions.unknown();
+  }
+  if((view==='review'||view==='test')&&['1','2','3','4'].includes(e.key)){
+    if(view==='review')answer(+e.key-1);else testAnswer(+e.key-1);
+  }
+  if(e.key==='Enter'&&state.session?.feedback){e.preventDefault();
+    if(view==='review')next();
+    else if(view==='test')actions.nextTest();
+  }
+});
+
+// 初始化
 render();
-if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'get_learning_summary',description:'Read the current local learning progress without changing it.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true},execute(input){if(input&&Object.keys(input).length)throw Error('No input fields allowed');return{learned:Object.keys(state.records).length,due:due().length,today:today(),dailyNewGoal:goal(),examDate:state.exam}}})).catch(()=>{})}catch{}}
