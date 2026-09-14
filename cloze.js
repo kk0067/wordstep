@@ -9,7 +9,7 @@ const CLOZE_DATA = [
     title: "A Second Chance at College",
     category: "教育",
     wordCount: 205,
-    text: "At the age of thirty-five, Linda decided to go back to college. For years she had worked as a secretary in a small company, doing the same routine day after day. The job was stable, ___1___ she felt that something was missing. She wanted to learn something new and to prove that she could still succeed in an academic ___2___.\n\nThe first semester was harder than she had expected. She had to balance classes, homework and a full-time job, and sometimes she felt completely ___3___. Most of her classmates were half her age, which made her feel nervous ___4___. However, she soon found that her life experience gave her a real ___5___ — she understood why she was studying, and she was far more serious than many young students.\n\nBy the end of the year, Linda had become one of the top students in her class. Her teachers ___6___ her ability to connect textbook theory with real life. More importantly, she regained her ___7___. She had once believed that it was too late to change, ___8___ now she knew that learning could happen at any age.\n\nHer story tells us that education is not a race with a fixed finish line. People of all ages can ___9___ new knowledge, and a second chance is never beyond reach. If you have a dream that you keep ___10___ off, perhaps it is time to take the first ___11___. As Linda often says, the best time to plant a tree was twenty years ago; the ___12___ best time is today.\n\nOf course, going back to study is not easy. It requires patience, time and a willingness to face ___13___. But the rewards are worth every effort. Linda finally ___14___ her degree last summer, and she has already found a job that truly fits her interests. She often tells younger colleagues, \"Never let age ___15___ you from trying.\"",
+    text: "At thirty-five, Linda decided to go back to college. For years she had worked as a secretary, doing the same routine day after day. The job was stable, ___1___ she felt that something was missing. She wanted to prove she could still succeed in an academic ___2___.\n\nThe first semester was harder than expected. She balanced classes, homework and a full-time job, and sometimes felt completely ___3___. Most classmates were half her age, which made her nervous ___4___. However, she soon found her life experience gave her a real ___5___ — she understood exactly why she was studying.\n\nBy year's end she was a top student. Her teachers ___6___ her ability to connect theory with real life. More importantly, she regained her ___7___. She had once believed it was too late to change, ___8___ now she knew learning could happen at any age.\n\nEducation is not a race with a fixed finish line. People of all ages can ___9___ new knowledge. If you keep ___10___ a dream off, take the first ___11___. The best time to plant a tree was twenty years ago; the ___12___ best time is today.\n\nGoing back to study is not easy; it requires patience and the courage to face ___13___. Linda finally ___14___ her degree last summer. She often tells younger colleagues, \"Never let age ___15___ you from trying.\"",
     blanks: [
       {
         index: 1,
@@ -124,8 +124,8 @@ const CLOZE_DATA = [
     id: "c002",
     title: "The New Intern",
     category: "工作",
-    wordCount: 208,
-    text: "When David joined the company as an intern, he was nervous about everything. He had never worked in a real office before, and he was afraid of making ___1___ in front of experienced colleagues. On his first day, his manager showed him around and introduced him to the team, but David could not ___2___ remember everyone's name.\n\nDuring the first week, David's tasks were small and ___3___ — copying files, answering emails, and making coffee. He sometimes felt that his work was not ___4___, but he did not complain. Instead, he paid close ___5___ to how his colleagues solved problems, and he took notes in a small notebook every evening.\n\nOne morning, a client called with an urgent question that no one else could answer. David ___6___ to have read about the problem in the company report the night before. He took a deep breath and gave a clear, careful reply. The client was ___7___, and his manager looked at him with new ___8___.\n\nFrom that day on, David was given more important work. He learned that being an intern was not about doing great things ___9___, but about doing small things well and being ready when an opportunity ___10___. He also learned that asking questions was not a sign of weakness; ___11___, it showed a desire to learn.\n\nBy the end of the summer, David had been ___12___ a full-time position. His manager told him, \"We hired you not ___13___ your grades, but because of your attitude.\" David smiled. He had come to the office to learn, but he had also learned something ___14___ valuable: that every expert was once a beginner, and that ___15___ beats talent when talent does not work hard.",
+    wordCount: 202,
+    text: "When David joined the company as an intern, he was nervous about everything. He had never worked in a real office, and he was afraid of making ___1___ in front of experienced colleagues. On his first day, David could not ___2___ remember everyone's name.\n\nDuring the first week, his tasks were small and ___3___ — copying files and answering emails. He sometimes felt his work was not ___4___, but he did not complain. Instead, he paid close ___5___ to how his colleagues solved problems, and took notes every evening.\n\nOne morning, a client called with an urgent question no one else could answer. David ___6___ to have read about it the night before. He took a deep breath and gave a clear, careful reply. The client was ___7___, and his manager looked at him with new ___8___.\n\nFrom then on, David was given more important work. Being an intern is not about doing great things ___9___, but about being ready when an opportunity ___10___. Asking questions is not weakness; ___11___, it shows a desire to learn.\n\nBy summer's end, David had been ___12___ a full-time position. \"We hired you not ___13___ your grades, but because of your attitude,\" his manager said. He had also learned something ___14___ valuable, a lesson he would keep for years: that ___15___ beats talent when talent does not work hard.",
     blanks: [
       {
         index: 1,
@@ -146,14 +146,14 @@ const CLOZE_DATA = [
         options: ["heavy", "simple", "rough", "dull"],
         correct: 1,
         testType: "词义辨析",
-        explanation: "正确答案 B(simple)。与 small 并列，指\"又小又简单\"的杂活（复印、回邮件、煮咖啡）。heavy(重的)、rough(粗糙的/艰难的)、dull(乏味的)虽可描述工作，但与后面列举的琐碎事务不构成并列。"
+        explanation: "正确答案 B(simple)。与 small 并列，指\"又小又简单\"的杂活（复印、回邮件）。heavy(重的)、rough(粗糙的/艰难的)、dull(乏味的)虽可描述工作，但与后面列举的琐碎事务不构成并列。"
       },
       {
         index: 4,
         options: ["interesting", "necessary", "meaningful", "popular"],
         correct: 2,
         testType: "上下文",
-        explanation: "正确答案 C(meaningful)。做复印煮咖啡这类杂活，他觉得自己的工作\"没有意义\"。interesting(有趣)、necessary(必要)、popular(受欢迎)都不能解释他\"差点抱怨\"的失落感。"
+        explanation: "正确答案 C(meaningful)。做复印回邮件这类杂活，他觉得自己的工作\"没有意义\"。interesting(有趣)、necessary(必要)、popular(受欢迎)都不能解释他\"差点抱怨\"的失落感。"
       },
       {
         index: 5,
@@ -240,8 +240,8 @@ const CLOZE_DATA = [
     id: "c003",
     title: "Walking Back to Health",
     category: "健康",
-    wordCount: 206,
-    text: "Three years ago, Dr. Wang told me that I needed to lose weight and exercise more. At thirty, I was already ___1___ by high blood pressure, and my doctor warned me that if I did not change my habits, my health would only get ___2___. I tried running, but I ___3___ my knee after two weeks and had to stop. I tried gym classes, ___4___ I soon got bored and gave up.\n\nThen a friend suggested simple walking. \"You don't need to be an athlete,\" she said. \"Just walk, every day, for thirty minutes.\" I was ___5___ at first — how could such an easy activity help? But I decided to give it a ___6___.\n\nThe first week was harder than I expected. My legs were sore, and I wanted to stay ___7___ the sofa in the evening. However, I kept my promise to myself. After ten days, something ___8___: I actually looked forward to my walks. The fresh air cleared my head, and the quiet streets gave me a ___9___ to think.\n\nWithin a few months, my blood pressure returned to ___10___ levels. More importantly, I felt energetic again. Walking did not just change my body; it changed my ___11___. I used to believe that exercise had to be painful to be ___12___. Now I know that small, steady habits work better than sudden, painful efforts.\n\nDoctors call this \"lifestyle medicine.\" They have found that regular walking can ___13___ the risk of heart disease and even improve mood. It is ___14___, and it can be done almost anywhere.\n\nIf you are thinking about getting fit, do not wait for the perfect plan. Put on comfortable shoes and walk ___15___. Your body will thank you.",
+    wordCount: 196,
+    text: "Three years ago, Dr. Wang told me I needed to exercise more. At thirty, I was already ___1___ by high blood pressure, and he warned me that if I did not change, my health would only get ___2___. I tried running, but I ___3___ my knee and had to stop. I tried gym classes, ___4___ I soon got bored and gave up.\n\nA friend suggested simple walking. I was ___5___ at first — how could such an easy activity help? But I decided to give it a ___6___.\n\nThe first week was hard. My legs were sore, and I wanted to stay ___7___ the sofa. However, I kept my promise. After ten days, something ___8___: I actually looked forward to my walks, and the quiet streets gave me a ___9___ to think.\n\nWithin months, my blood pressure returned to ___10___ levels. Walking did not just change my body; it changed my ___11___. I used to believe exercise had to be painful to be ___12___. Now I know small, steady habits work better than sudden, painful efforts.\n\nDoctors call it lifestyle medicine: regular walking can ___13___ the risk of heart disease and even improve mood. It is ___14___ and can be done almost anywhere. So do not wait for a perfect plan. Put on comfortable shoes and walk ___15___. Your body will thank you.",
     blanks: [
       {
         index: 1,
@@ -346,7 +346,7 @@ const CLOZE_DATA = [
         options: ["away", "out", "today", "alone"],
         correct: 2,
         testType: "上下文",
-        explanation: "正确答案 C(today)。与前文 do not wait for the perfect plan 呼应，号召\"今天就走起来\"。away(离开)、out(出去)、alone(独自)都不与\"别等待\"构成呼吁。"
+        explanation: "正确答案 C(today)。与前文 do not wait for a perfect plan 呼应，号召\"今天就走起来\"。away(离开)、out(出去)、alone(独自)都不与\"别等待\"构成呼吁。"
       }
     ]
   },
@@ -356,8 +356,8 @@ const CLOZE_DATA = [
     id: "c004",
     title: "Smartphones at the Dinner Table",
     category: "科技",
-    wordCount: 209,
-    text: "Last month, I visited my grandparents for Sunday dinner. The meal was delicious, but I could not help ___1___ that something was wrong. Around the table, every member of my family was looking at a phone ___2___ talking to one another. My cousin was scrolling through videos, and my uncle was ___3___ work emails. Only my grandmother, who does not own a smartphone, looked up and smiled at me.\n\nThat evening, I read an article about the ___4___ of phones on family life. Researchers found that people who check their devices during meals report feeling less ___5___ to their family. Even a single phone placed on the table can lower the quality of a ___6___, the study said. The screen does not have to ring; its very ___7___ is enough to distract us.\n\nThis did not ___8___ me completely. I remembered too many dinners where I had ___9___ a funny video rather than listen to my mother's stories. Phones are wonderful tools, ___10___ they quietly steal our attention if we let them.\n\nSo I decided to make a small ___11___. At our next family dinner, I put my phone in my bag. At first, I felt ___12___, as if I were missing something. But then my grandmother told me a story about her youth, and I found myself ___13___ every word. By the end of the meal, we had laughed together more than we had in months.\n\nTechnology will not disappear, and nor should it. ___14___, we can choose when to use it. A dinner table is not an office or a cinema; it is a place where people ___15___. The next time you sit down to eat, try leaving your phone in another room. You may be surprised by what you remember.",
+    wordCount: 198,
+    text: "Last month, I visited my grandparents for Sunday dinner. The meal was delicious, but I could not help ___1___ that something was wrong. Around the table, everyone was looking at a phone ___2___ talking to one another. My uncle was ___3___ work emails; only my grandmother, who has no smartphone, looked up and smiled.\n\nThat evening, I read about the ___4___ of phones on family life. Researchers found that people who check their devices during meals feel less ___5___ to their family. Even a phone on the table can lower the quality of a ___6___; its very ___7___ is enough to distract us.\n\nThis did not ___8___ me. I remembered dinners where I had ___9___ a video rather than listen to my mother's stories. Phones are wonderful tools, ___10___ they quietly steal our attention if we let them.\n\nSo I made a small ___11___. At the next dinner, I put my phone in my bag. At first I felt ___12___, as if I were missing something. But then my grandmother told me a story, and I found myself ___13___ every word. By the end, we had laughed together more than in months.\n\nTechnology will not disappear. ___14___, we can choose when to use it. A dinner table is not an office; it is a place where people ___15___. Try leaving your phone in another room next time.",
     blanks: [
       {
         index: 1,
@@ -420,7 +420,7 @@ const CLOZE_DATA = [
         options: ["watched", "made", "written", "sold"],
         correct: 0,
         testType: "上下文",
-        explanation: "正确答案 A(watched)。与 funny video 搭配的是 watch(看视频)。make/write/sell a video 都不能解释\"只顾看视频不听妈妈讲故事\"。"
+        explanation: "正确答案 A(watched)。与 video 搭配的是 watch(看视频)，即\"只顾看视频不听妈妈讲故事\"。make/write/sell a video 都不能解释这种对比。"
       },
       {
         index: 10,
@@ -472,8 +472,8 @@ const CLOZE_DATA = [
     id: "c005",
     title: "Our Town Goes Green",
     category: "环境",
-    wordCount: 207,
-    text: "Two years ago, our town had a problem. Every morning, rubbish bins were overflowing, and plastic bags flew across the streets. No one seemed to know what to do ___1___ it. Then a group of volunteers proposed a simple plan: we would separate waste into four kinds — recyclable, kitchen, harmful, and ___2___.\n\nAt first, the idea was not popular. People complained that sorting rubbish was ___3___ and took too much time. \"Why can't we just throw everything into one bin?\" they asked. The volunteers did not ___4___. They stood by the bins for weeks, patiently ___5___ people where each kind of waste should go.\n\nSlowly, things began to ___6___. Mrs. Chen, who used to be the loudest complainer, became one of the most ___7___ supporters. She even brought her grandson along to teach him how to sort batteries and paper. Little by little, the town started to look ___8___. The air smelled fresher, and the river near the park was finally ___9___ again.\n\nThe volunteers also opened a community garden. People brought old boxes and unwanted tools, and together they ___10___ a small green space where children could learn about plants. What began as a(n) ___11___ project became a symbol of hope.\n\nOur story shows that protecting the environment does not ___12___ grand plans. It begins with small daily choices. Every piece of rubbish sorted, every tap turned ___13___, and every bike ride instead of a car trip ___14___. If everyone does a little, the ___15___ will be huge.",
+    wordCount: 188,
+    text: "Two years ago, our town had a problem. Rubbish bins overflowed, and plastic bags flew across the streets. No one knew what to do ___1___ it. Then volunteers proposed a plan: separate waste into recyclable, kitchen, harmful, and ___2___.\n\nAt first the idea was unpopular. People said sorting was ___3___ and took too much time. The volunteers did not ___4___. They stood by the bins for weeks, patiently ___5___ people where each kind should go.\n\nSlowly, things began to ___6___. Mrs. Chen, once the loudest complainer, became one of the most ___7___ supporters. Little by little, the town looked ___8___, and the river near the park was finally ___9___ again.\n\nVolunteers also opened a community garden. On weekends, neighbors came to pick fresh vegetables and share stories. Together they ___10___ a small green space for children. What began as a ___11___ project became a symbol of hope for the whole town.\n\nProtecting the environment does not ___12___ grand plans or huge budgets. Every piece sorted, every tap turned ___13___, every bike ride instead of a car trip ___14___. If everyone does a little, the ___15___ will be huge.",
     blanks: [
       {
         index: 1,
@@ -487,14 +487,14 @@ const CLOZE_DATA = [
         options: ["useless", "cheap", "other", "liquid"],
         correct: 2,
         testType: "词义辨析",
-        explanation: "正确答案 C(other)。垃圾分类四类：可回收、厨余、有害和\"其他(waste)\"，other 与前三类并列最自然。useless(无用的)、cheap(便宜的)、liquid(液态的)都不是标准类别名称。"
+        explanation: "正确答案 C(other)。垃圾分类四类：可回收、厨余、有害和\"其他(other)\"，与前三类并列最自然。useless(无用的)、cheap(便宜的)、liquid(液态的)都不是标准类别名称。"
       },
       {
         index: 3,
         options: ["simple", "helpful", "troublesome", "necessary"],
         correct: 2,
         testType: "词义辨析",
-        explanation: "正确答案 C(troublesome)。由 complained 和 took too much time 可知人们觉得垃圾分类\"麻烦\"。simple(简单)、helpful(有帮助)、necessary(必要)都与抱怨语气相反。"
+        explanation: "正确答案 C(troublesome)。由 unpopular 和 took too much time 可知人们觉得垃圾分类\"麻烦\"。simple(简单)、helpful(有帮助)、necessary(必要)都与抱怨语气相反。"
       },
       {
         index: 4,
@@ -522,7 +522,7 @@ const CLOZE_DATA = [
         options: ["lazy", "unhappy", "enthusiastic", "curious"],
         correct: 2,
         testType: "词义辨析",
-        explanation: "正确答案 C(enthusiastic)。与 loudest complainer 形成对比，她成了最\"热心\"的支持者，还带孙子来学习。lazy(懒)、unhappy(不满)与转变相反；curious(好奇)不如 enthusiastic 贴切。"
+        explanation: "正确答案 C(enthusiastic)。与 loudest complainer 形成对比，她成了最\"热心\"的支持者。lazy(懒)、unhappy(不满)与转变相反；curious(好奇)不如 enthusiastic 贴切。"
       },
       {
         index: 8,
@@ -543,7 +543,7 @@ const CLOZE_DATA = [
         options: ["created", "sold", "buried", "ruined"],
         correct: 0,
         testType: "词义辨析",
-        explanation: "正确答案 A(created)。人们用旧箱子旧工具一起\"创建\"了小绿地。sell(卖)、bury(埋)、ruin(毁坏)都与建设社区花园的积极行为相反。"
+        explanation: "正确答案 A(created)。人们一起\"创建\"了小绿地。sell(卖)、bury(埋)、ruin(毁坏)都与建设社区花园的积极行为相反。"
       },
       {
         index: 11,
@@ -588,8 +588,8 @@ const CLOZE_DATA = [
     id: "c006",
     title: "The Lantern Festival Abroad",
     category: "文化",
-    wordCount: 208,
-    text: "Last spring, my Chinese friend Li invited me to celebrate the Lantern Festival with her family. I had seen lanterns only in paintings, so I did not know what to ___1___. When we arrived at her home, the whole house was ___2___ with red lanterns, and the table was ___3___ of sweet rice dumplings called tangyuan.\n\nLi's grandmother told us the story ___4___ the festival. Long ago, people believed that the festival brought families together and ___5___ good luck for the whole year. The round shape of the dumplings, she explained, ___6___ the unity of the family. As she spoke, she folded her hands and ___7___ for a safe and happy year. I did not understand every word, but I felt the ___8___ in her voice.\n\nAfter dinner, we walked to the park, ___9___ hundreds of lanterns were hanging in the trees. People wrote their wishes on small pieces of paper and ___10___ them to the lanterns. A child next to me laughed as her lantern lit up, and her laughter ___11___ through the whole square.\n\nThis experience taught me something important. Culture is not ___12___ in old books or museums only; it lives in shared food, shared stories and shared ___13___. Before that night, the Lantern Festival was just a word to me. ___14___ now, it is a warm memory I carry with me.\n\nWhenever I see a red lantern in a shop window, I remember that evening. It reminds me that kindness and the wish for a happy life are the same in every ___15___.",
+    wordCount: 192,
+    text: "Last spring, my Chinese friend Li invited me to the Lantern Festival. I had seen lanterns only in paintings, so I did not know what to ___1___. Her home was ___2___ with red lanterns, and the table was ___3___ of sweet rice dumplings.\n\nHer grandmother told us the story ___4___ the festival. She said it brought families together and ___5___ good luck for the year. The round dumplings, she explained, ___6___ the unity of the family. She folded her hands and ___7___ for a safe, happy year. I did not understand every word, but I felt the ___8___ in her voice.\n\nAfter dinner, we walked to the park, ___9___ hundreds of lanterns hung in the trees. People wrote wishes on paper and ___10___ them to the lanterns. A child's laughter ___11___ through the whole square.\n\nThis taught me that culture is not ___12___ in old books only; it lives in shared food, stories and ___13___. Before that night it was just a word to me. ___14___ now, it is a warm memory I carry with me wherever I go. Kindness and the wish for a happy life are the same in every ___15___.",
     blanks: [
       {
         index: 1,
@@ -704,8 +704,8 @@ const CLOZE_DATA = [
     id: "c007",
     title: "A Helping Hand",
     category: "社会",
-    wordCount: 206,
-    text: "When Mrs. Lee retired at sixty, she worried that she would be bored. After thirty years of teaching, the idea of spending her days at home felt ___1___. Then her granddaughter told her about a community program that ___2___ elderly people living alone. Mrs. Lee decided to give it a try.\n\nHer first visit was to Mr. Wang, a seventy-eight-year-old man who had ___3___ his wife two years before. His flat was clean, ___4___ it felt lonely. Mrs. Lee brought fruit and sat with him for an hour. She did not have to do much; just being ___5___ was enough. Mr. Wang talked about his garden, and she listened ___6___.\n\nAfter that first meeting, Mrs. Lee visited every Wednesday. She helped Mr. Wang write letters, read newspapers ___7___ him, and sometimes they simply drank tea together. Slowly, the flat became ___8___. Mr. Wang started to smile more, and he even began to grow vegetables on his balcony ___9___ her.\n\nThe program changed Mrs. Lee too. She had thought retirement would be a(n) ___10___ chapter, but now she felt needed again. Her students had once told her that teaching was not just about books; it was about ___11___ with people. She understood this more deeply than ever.\n\nVolunteering does not require money or special ___12___. It asks for patience and a little time. Mrs. Lee often says that she has ___13___ more from Mr. Wang than she has given. Their friendship is quiet, but it is ___14___. It reminds the whole neighborhood that no one has to face ___15___ alone.",
+    wordCount: 190,
+    text: "When Mrs. Lee retired at sixty, after thirty years of teaching, she worried she would be bored all day. Spending her days at home felt ___1___. Then her granddaughter told her about a program that ___2___ elderly people living alone, and Mrs. Lee gave it a try.\n\nHer first visit was to Mr. Wang, who had ___3___ his wife two years before. His flat was clean, ___4___ it felt lonely. Mrs. Lee sat with him for an hour; just being ___5___ was enough. He talked about his garden, and she listened ___6___.\n\nAfter that she visited every Wednesday. She read newspapers ___7___ him and sometimes they simply drank tea together. Slowly the flat became ___8___, and Mr. Wang even grew vegetables on his balcony ___9___ her.\n\nThe program changed Mrs. Lee too. She had thought retirement was a ___10___ chapter, but now she felt needed again. Teaching, she realized, is about ___11___ with people, not just about books.\n\nVolunteering needs no money or special ___12___. Mrs. Lee says she has ___13___ more than she has given. Their friendship is quiet but ___14___, and it reminds the neighborhood that no one must face ___15___ alone.",
     blanks: [
       {
         index: 1,
@@ -820,8 +820,8 @@ const CLOZE_DATA = [
     id: "c008",
     title: "Running My First Marathon",
     category: "人物经历",
-    wordCount: 210,
-    text: "I had never been a runner. At school, I always finished last in races, and I had ___1___ hated sports. So when I told my friends that I was going to run a full marathon, they thought I was ___2___. Even I doubted myself.\n\nIt started with a simple bet with my doctor. After a health ___3___, he told me that I needed to build up my heart. \"Start with ten minutes of jogging,\" he said. Ten minutes did not sound ___4___. On the first day, I walked more than I ran, and by the end I was ___5___. But I went out again the next morning.\n\nWeek by week, the distance ___6___. I ran in the rain, in the heat and on cold winter mornings when every part of me wanted to ___7___. There were days when I wanted to quit, but I made a rule: never skip twice in a row. One missed day was a rest; two missed days were the ___8___ of a habit.\n\nThe morning of the race, my hands were shaking. Thirty thousand runners ___9___ at the starting line, and the streets were lined with cheering crowds. After an hour, my legs began to ___10___. At the thirty-kilometre mark, a wall of pain ___11___ me, and I wanted to stop. Then a stranger running beside me said, \"You are almost there. Keep going.\" Those simple words gave me just enough ___12___.\n\nI crossed the finish line in four hours and forty-seven minutes. I was not fast, ___13___ I had finished something I once thought impossible. Lying on the grass, I realized that a marathon is not about speed. It is about putting one foot in front of the other, ___14___ you want to stop.",
+    wordCount: 198,
+    text: "I had never been a runner. At school I always finished last, and I had ___1___ hated sports. So when I said I would run a full marathon, my friends thought I was ___2___. Even I doubted myself.\n\nIt began with a health ___3___. My doctor told me to build up my heart, starting with ten minutes of jogging. Ten minutes did not sound ___4___. On the first day I walked more than I ran, and by the end I was ___5___. But I went out again the next morning.\n\nWeek by week, the distance ___6___. I ran in rain and cold mornings when every part of me wanted to ___7___. I made a rule: never skip twice in a row. One missed day was rest; two missed days were the ___8___ of a habit.\n\nOn race morning, 30,000 runners ___9___ at the starting line. After an hour my legs began to ___10___. At thirty kilometres, a wall of pain ___11___ me, and I wanted to stop. Then a stranger beside me said, \"Keep going.\" Those words gave me just enough ___12___.\n\nI finished in four hours forty-seven minutes. I was not fast, ___13___ I had done what I once thought impossible. A marathon is about putting one foot in front of the other, ___14___ you want to stop.",
     blanks: [
       {
         index: 1,
@@ -936,8 +936,8 @@ const CLOZE_DATA = [
     id: "c009",
     title: "The Power of Small Habits",
     category: "心理",
-    wordCount: 209,
-    text: "Every January, millions of people make grand plans: lose weight, learn a language, read fifty books. By February, most of those plans have been quietly ___1___. Why do we fail so often? Experts say the problem is not that we are weak-willed; it is that we aim too ___2___.\n\nJames Clear, the author of Atomic Habits, argues that success is not the ___3___ of one big decision. It is the result of small choices repeated every day. He ___4___ that a person who reads just one page a night will finish around thirty books a year. A person who walks ten minutes a day will, over a year, cover hundreds of kilometres. Small actions, repeated ___5___, become powerful.\n\nThe key is to make the habit so ___6___ that we cannot say no. Want to exercise more? Put your shoes by the bed the night before. Want to read more? Leave a book on the ___7___ instead of your phone. When the good choice is easy, we are far more likely to make it.\n\nWe should also stop ___8___ too much from ourselves in one go. Trying to change everything at once only leads to ___9___. Instead, change one thing at a time. Once it becomes automatic, you can add another small habit.\n\nFinally, be kind to yourself. Everyone ___10___ now and then. What matters is not whether you slip, but how quickly you get back on track. A single missed day is a small loss; a missed week is a choice.\n\nBig changes rarely happen ___11___. They grow quietly, one small step at a time. If you want a different life, start by building a slightly different habit.",
+    wordCount: 190,
+    text: "Every January, millions make grand plans: lose weight, learn a language, read fifty books. By February, most plans have been quietly ___1___. Experts say we fail not because we are weak-willed, but because we aim too ___2___.\n\nSuccess is not the ___3___ of one big decision; it is small choices repeated daily. The author James Clear ___4___ that reading one page a night means about thirty books a year. Small actions, repeated ___5___, become powerful.\n\nThe key is to make the habit so ___6___ we cannot say no. Want to read more? Leave a book on the ___7___ instead of your phone. When the good choice is easy, we are far more ___8___ to make it.\n\nStop ___9___ too much from yourself all at once. Changing everything at once leads to ___10___, and most people give up after a week. Change one thing at a time. Only when it feels easy should you ___11___ another small habit to your life. And remember: everyone ___12___ now and then; what matters is how ___13___ you get back on track.\n\nBig changes rarely happen ___14___. They grow quietly, one small step at a time. If you want a different life, start by ___15___ a slightly different habit.",
     blanks: [
       {
         index: 1,
@@ -958,7 +958,7 @@ const CLOZE_DATA = [
         options: ["cause", "beginning", "result", "discovery"],
         correct: 2,
         testType: "上下文",
-        explanation: "正确答案 C(result)。与下文 It is the result of... 呼应，成功不是某个重大决定的\"结果\"，而是日常小选择的累积。cause(原因)、beginning(开端)、discovery(发现)与后句不并列。"
+        explanation: "正确答案 C(result)。与下文 it is small choices... 呼应，成功不是某个重大决定的\"结果\"，而是日常小选择的累积。cause(原因)、beginning(开端)、discovery(发现)与后句不并列。"
       },
       {
         index: 4,
@@ -979,7 +979,7 @@ const CLOZE_DATA = [
         options: ["hard", "expensive", "strange", "simple"],
         correct: 3,
         testType: "上下文",
-        explanation: "正确答案 D(simple)。让习惯\"简单\"到无法拒绝，与下文把鞋放床边、把书放枕头边呼应。hard(难)与策略相反；expensive(贵)、strange(怪)不沾边。"
+        explanation: "正确答案 D(simple)。让习惯\"简单\"到无法拒绝，与下文把书放枕头边代替手机呼应。hard(难)与策略相反；expensive(贵)、strange(怪)不沾边。"
       },
       {
         index: 7,
@@ -1021,7 +1021,7 @@ const CLOZE_DATA = [
         options: ["succeeds", "works", "slips", "laughs"],
         correct: 2,
         testType: "上下文",
-        explanation: "正确答案 C(slips)。下文 whether you slip 提示：每个人都会偶尔\"松懈、失足\"。succeed(成功)、work(工作)、laugh(笑)都与 be kind to yourself 的包容主题不符。"
+        explanation: "正确答案 C(slips)。下文 what matters is...you get back on track 提示：每个人都会偶尔\"松懈、失足\"。succeed(成功)、work(工作)、laugh(笑)都与 be kind to yourself 的包容主题不符。"
       },
       {
         index: 13,
@@ -1052,8 +1052,8 @@ const CLOZE_DATA = [
     id: "c010",
     title: "A Lesson from a Rainy Day",
     category: "生活",
-    wordCount: 207,
-    text: "It was a cold April morning, and I was already in a bad mood. The bus was late, my coffee was cold, and I had forgotten my umbrella. By the time I ___1___ the office, rain was pouring down. I stood under a small shelter, ___2___ when I would get dry.\n\nThen an old woman came up beside me. She was holding a single red rose in her hand. \"Nice flower,\" I said, trying to be ___3___. She smiled and broke off the rose, holding it out to me. \"You keep it,\" she said. \"I have a whole ___4___ of them at home.\"\n\nI was surprised and accepted it ___5___. \"Why are you giving this away?\" I asked. She told me that she grew roses every spring, and that giving them ___6___ made her happier than selling them. \"A flower ___7___ alone is just a flower,\" she said. \"Given to someone, it becomes a gift.\"\n\nI held the rose all day. Its color ___8___ my grey desk, and every time I looked at it, I remembered the woman's words. That evening, I stopped at a shop and bought a small pot of flowers for my ___9___, who had helped me move months before. She called me, ___10___, to thank me.\n\nThat small act taught me that happiness is not something we only ___11___. It is something we create by passing things on. The rose did not ___12___ much, but it changed my whole day. We often think we need money or success to feel happy, ___13___ the truth is that kindness is free.\n\nNow, whenever I feel ___14___, I remember that rose. I try to give something small — a smile, a kind word, a flower. And every time I do, I find that my own day becomes ___15___, too.",
+    wordCount: 190,
+    text: "It was a cold April morning, and I was in a bad mood. The bus was late, my coffee was cold, and I had forgotten my umbrella. By the time I ___1___ the office, rain was pouring down. I stood under a small shelter, ___2___ when I would get dry.\n\nAn old woman came up beside me, holding a single red rose. \"Nice flower,\" I said, trying to be ___3___. She smiled and handed me the rose. \"Keep it. I have a whole ___4___ of them at home.\"\n\nSurprised, I accepted it ___5___. She said giving roses ___6___ made her happier than selling them. \"A flower ___7___ alone is just a flower,\" she said. \"Given to someone, it becomes a gift.\"\n\nThe rose ___8___ my grey desk all day. That evening I bought a small pot of flowers for my ___9___, who had helped me move months before. She called me, ___10___, to thank me.\n\nHappiness is not something we only ___11___; we create it by passing things on. The rose did not ___12___ much, but it changed my whole day. We think we need money to be happy, ___13___ kindness is free. Now whenever I feel ___14___, I give something small, and my own day becomes ___15___, too.",
     blanks: [
       {
         index: 1,
