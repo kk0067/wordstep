@@ -435,6 +435,31 @@ const EXAM_WORD_CONTENT={
   through:['People can learn new skills through online courses.','人们可以通过网络课程学习新技能。',['go through','through practice'],'可表示“穿过”或“通过某种方式”；go through 还可表示“经历”。']
 };
 
+const PHRASE_CONTENT={
+  'go to':{meaning:'去……；前往……',usage:'go to + 地点。地点前通常不加 the；但 go home 不用 to。',example:'I go to school by bus every day.',translation:'我每天坐公交车去上学。'},
+  'pay attention to':{meaning:'注意……',usage:'to 是介词，后面接名词或动名词，不能接动词原形。',example:'Please pay attention to the key words.',translation:'请注意关键词。'},
+  'look forward to':{meaning:'期待……',usage:'to 是介词，后面接名词或 doing，不能接动词原形。',example:'I look forward to hearing from you.',translation:'我期待收到你的来信。'},
+  'be able to':{meaning:'能够……',usage:'be able to + 动词原形，可用于多种时态；过去式 was/were able to。',example:'She is able to solve the problem.',translation:'她能够解决这个问题。'},
+  'in order to':{meaning:'为了……',usage:'in order to + 动词原形，表示目的，否定形式是 in order not to do。',example:'He studies hard in order to pass the exam.',translation:'他努力学习是为了通过考试。'},
+  'because of':{meaning:'因为……',usage:'because of 后接名词、代词或动名词；because 后接完整句子。',example:'The match was canceled because of the rain.',translation:'比赛因为下雨被取消了。'},
+  'as a result':{meaning:'因此；结果',usage:'表示结果，常放在句首或两个分句之间，后面接完整句子。',example:'He worked hard. As a result, he passed the exam.',translation:'他努力学习。因此，他通过了考试。'},
+  'take part in':{meaning:'参加……',usage:'take part in + 活动/比赛，in 是介词，后接名词或动名词。',example:'Many students take part in the reading activity.',translation:'许多学生参加了阅读活动。'},
+  'deal with':{meaning:'处理；应对',usage:'deal with 后接问题、事情；how to deal with 是常见结构。',example:'We need to learn how to deal with stress.',translation:'我们需要学会如何应对压力。'}
+};
+
+function phraseStudyContent(phrase){
+  const key=String(phrase||'').toLowerCase().trim();
+  if(PHRASE_CONTENT[key])return PHRASE_CONTENT[key];
+  const clean=String(phrase||'').replace(/\s*\([^)]*\)/g,'').trim();
+  return {meaning:'常见搭配：'+clean,usage:'先整体记忆这个搭配，再根据上下文判断它在句中的意思和词性。',example:'The passage uses “'+clean+'” in a useful context.',translation:'文章在一个有用的语境中使用了“'+clean+'”这个搭配。'};
+}
+
+function studySentenceHtml(sentence){
+  const learnedWords=new Set(Object.keys(state.records||{}).map(id=>{const w=getWord(id);return w?w.word.toLowerCase():''}).filter(Boolean));
+  const highlight=w=>'<button data-gloss="'+esc(w)+'"'+(learnedWords.has(String(w).toLowerCase())?' class="word-known"':'')+'>'+esc(w)+'</button>';
+  return highlightReadingText(sentence||'',highlight);
+}
+
 function wordStudyContent(w){
   const curated=EXAM_WORD_CONTENT[String(w.word||'').toLowerCase()];
   const example=w.example||(curated&&curated[0])||('The word “'+w.word+'” often appears in reading passages.');
@@ -522,8 +547,8 @@ function quickLearn(){
       '<div style="background:#fff7e8;color:#7a5310;border-radius:10px;padding:10px 14px;font-weight:600;margin:12px 0 4px">'+(item.rating==='fuzzy'?'有印象但不确定：重点看搭配和例句':item.rating==='unknown'?'暂时不认识：现在看懂即可，系统会尽快再安排': '先看讲解，再按真实情况选择')+'</div>'+ 
       // 详解小按钮（折叠面板）
       tab('meaning','📖 释义','<p style="font-size:18px;font-weight:600">'+esc(w.meaning)+'</p>'+(w.examMeaning?'<p style="margin-top:6px"><b>考试常考：</b>'+esc(w.examMeaning)+'</p>':''))+
-      tab('example','📝 例句','<p lang="en" style="font-size:15px">'+esc(study.example)+' <button class="speaker" data-speak="'+esc(study.example)+'">◖))</button></p><p class="small" style="margin-top:4px">'+esc(study.translation)+'</p>')+
-      tab('collocation','🔗 搭配/词组','<div style="display:flex;gap:6px;flex-wrap:wrap">'+study.collocations.map(c=>'<span lang="en" style="background:#f4f1ff;border-radius:6px;padding:4px 10px;font-size:14px">'+esc(c)+'</span>').join('')+'</div>')+
+      tab('example','📝 例句','<p lang="en" class="reading" style="font-size:15px">'+studySentenceHtml(study.example)+' <button class="speaker" data-speak="'+esc(study.example)+'">◖))</button></p><p class="small" style="margin-top:4px"><b>整句翻译：</b>'+esc(study.translation)+'</p>')+
+      tab('collocation','🔗 搭配/词组',study.collocations.map(c=>{const p=phraseStudyContent(c);return '<div style="background:#f8f6ff;border-radius:10px;padding:10px 12px;margin-bottom:8px"><p lang="en" style="font-weight:700;margin:0">'+esc(c)+'</p><p style="margin:5px 0"><b>意思：</b>'+esc(p.meaning)+'</p><p class="small" style="margin:5px 0"><b>怎么用：</b>'+esc(p.usage)+'</p><p class="reading small" lang="en" style="margin:5px 0">'+studySentenceHtml(p.example)+'</p><p class="small muted" style="margin:3px 0"><b>例句翻译：</b>'+esc(p.translation)+'</p><button class="speaker" data-speak="'+esc(p.example)+'">◖)) 朗读</button></div>'}).join(''))+
       tab('usage','💡 用法','<p><b>常见用法：</b>'+esc(study.commonUsage)+'</p><p style="margin-top:6px"><b>考试用法：</b>'+esc(study.examUsage)+'</p>')+
       tab('affix','🌳 词根词缀',affixHtml+(w.wordFamily&&w.wordFamily.length?'<p style="margin-top:8px"><b>同根词：</b>'+w.wordFamily.map(esc).join(', ')+'</p>':''))+
       (w.specialMeaning?tab('special','⭐ 熟词生义','<p style="color:#b44529">'+esc(w.specialMeaning)+'</p>'):'')+
@@ -538,12 +563,12 @@ function quickLearn(){
 }
 
 function detailSection(w){
+  const study=wordStudyContent(w);
   let html='<div class="example">';
-  if(w.example){html+='<p lang="en"><b>例句：</b>'+esc(w.example)+(w.translation?' <button class="linkbtn" data-speak="'+esc(w.example)+'">◖))</button>':'')+'</p>';}
-  if(w.translation){html+='<p>'+esc(w.translation)+'</p>';}
-  if(w.collocations&&w.collocations.length){html+='<p><b>搭配：</b>'+w.collocations.map(esc).join('；')+'</p>';}
-  if(w.commonUsage){html+='<p><b>用法：</b>'+esc(w.commonUsage)+'</p>';}
-  if(w.examUsage){html+='<p><b>考试用法：</b>'+esc(w.examUsage)+'</p>';}
+  html+='<p lang="en"><b>例句：</b><span class="reading">'+studySentenceHtml(study.example)+'</span> <button class="linkbtn" data-speak="'+esc(study.example)+'">◖))</button></p>';
+  html+='<p><b>整句翻译：</b>'+esc(study.translation)+'</p>';
+  html+='<p><b>搭配与用法：</b></p>'+study.collocations.map(c=>{const p=phraseStudyContent(c);return '<p><span lang="en"><b>'+esc(c)+'</b></span>：'+esc(p.meaning)+'<br><span class="small">'+esc(p.usage)+'</span></p>';}).join('');
+  html+='<p><b>考试用法：</b>'+esc(study.examUsage)+'</p>';
   if(w.specialMeaning){html+='<p style="color:#b44529"><b>熟词生义：</b>'+esc(w.specialMeaning)+'</p>';}
   if(w.wordFamily&&w.wordFamily.length){html+='<p><b>同根词：</b>'+w.wordFamily.map(esc).join(', ')+'</p>';}
   if(w.confuseWith&&w.confuseWith.length){html+='<p><b>易混词：</b>'+w.confuseWith.map(esc).join(', ')+'</p>';}
