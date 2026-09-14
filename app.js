@@ -3,12 +3,12 @@ const KEY='wordstep-v1',DAY=86400000;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function dateKey(d=new Date()){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function initial(){const end=new Date();end.setDate(end.getDate()+30);return{version:1,start:dateKey(),exam:dateKey(end),minutes:30,records:{},days:{},readings:{},session:null}}
+function initial(){const end=new Date();end.setDate(end.getDate()+30);return{version:2,start:dateKey(),exam:dateKey(end),minutes:30,newGoal:30,reviewGoal:40,records:{},days:{},readings:{},session:null}}
 let state=initial(),storageError=false;
 try{const raw=localStorage.getItem(KEY);if(raw)state=validate(JSON.parse(raw))}catch{storageError=true}
 function validate(s){
- if(!s||s.version!==1||![30,60].includes(s.minutes)||!validDate(s.start)||!validDate(s.exam)||!s.records||!s.days||!s.readings)throw Error('备份格式不正确');
- const n=initial();Object.assign(n,{start:s.start,exam:s.exam,minutes:s.minutes});
+ if(!s||!(s.version===1||s.version===2)||![30,60].includes(s.minutes)||!validDate(s.start)||!validDate(s.exam)||!s.records||!s.days||!s.readings)throw Error('备份格式不正确');
+ const n=initial();Object.assign(n,{version:2,start:s.start,exam:s.exam,minutes:s.minutes,newGoal:s.newGoal||30,reviewGoal:s.reviewGoal||40,mistakes:s.mistakes||{}});
  for(const [id,r] of Object.entries(s.records)){if(!WORDS.some(w=>w.id===id)||!r||!Number.isFinite(r.due)||!Number.isInteger(r.level)||r.level<0||r.level>5||!Number.isInteger(r.lapses)||r.lapses<0||!validDate(r.first))throw Error('词汇记录无效');n.records[id]={due:r.due,level:r.level,lapses:r.lapses,first:r.first}}
  for(const [d,v] of Object.entries(s.days)){if(!validDate(d)||!v||!['new','reviews','correct','attempts'].every(k=>Number.isInteger(v[k])&&v[k]>=0))throw Error('学习记录无效');n.days[d]={new:v.new,reviews:v.reviews,correct:v.correct,attempts:v.attempts}}
  for(const [k,v] of Object.entries(s.readings)){if(!/^\d{4}-\d{2}-\d{2}-[0-4]$/.test(k)||!v||typeof v.correct!=='boolean'||!Number.isInteger(v.choice)||v.choice<0||v.choice>3)throw Error('阅读记录无效');n.readings[k]={correct:v.correct,choice:v.choice}}
@@ -20,16 +20,16 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(state));storageError
 function today(){return state.days[dateKey()]||{new:0,reviews:0,correct:0,attempts:0}}
 function daily(){return state.days[dateKey()]??= {new:0,reviews:0,correct:0,attempts:0}}
 function remaining(){return Math.ceil((new Date(state.exam+'T00:00:00')-new Date(dateKey()+'T00:00:00'))/DAY)}
-function goal(){return remaining()<=7?5:state.minutes===30?15:25}
+function goal(){return remaining()<=7?5:(state.newGoal||30)}
 function due(){return WORDS.filter(w=>state.records[w.id]&&state.records[w.id].due<=Date.now()).sort((a,b)=>state.records[a.id].due-state.records[b.id].due)}
 function mistakes(){return WORDS.filter(w=>state.records[w.id]?.lapses>0&&state.records[w.id].level<3)}
 function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>$('#toast').style.display='none',3600)}
 let view='home',filter='all',query='',readingIndex=0,translation=false,gloss='',options=[],lastQuestion='';
-const navs=[['home','◷','今日学习'],['words','▤','我的词库'],['reading','▧','短句阅读'],['plan','▦','30天计划'],['settings','⚙','学习设置']];
+const navs=[['home','◷','今日学习'],['words','▤','我的词库'],['reading','▧','阅读训练'],['sentence','⌁','长难句'],['report','▥','学习报告'],['plan','▦','30天计划'],['settings','⚙','学习设置']];
 function navigate(v){view=v;render();window.scrollTo({top:0,behavior:'smooth'})}
 function header(title,sub='河南成人高考 · 专升本英语'){return '<div class="top"><div><div class="eyebrow">'+sub+'</div><h1>'+title+'</h1></div><span class="datepill">'+(remaining()>0?'距目标日期 <b>'+remaining()+'</b> 天':remaining()===0?'今天是目标日期':'目标日期已过')+'</span></div>'}
 function render(){
- $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v||(view==='learn'&&v==='home')?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>每天 '+state.minutes+' 分钟 · 浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,learn:learning,words:wordlist,reading:reading,plan:plan,settings:settings}[view]||home)()+'</main></div>';
+ $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v||(view==='learn'&&v==='home')?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>每天 '+state.minutes+' 分钟 · 浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,learn:learning,words:wordlist,reading:reading,sentence:sentence,report:report,plan:plan,settings:settings}[view]||home)()+'</main></div>';
  bind();
 }
 function home(){
