@@ -639,9 +639,14 @@ function reading(){
   '<p class="small muted">点击英文单词可查意思。</p>'+
   (r.questions&&r.questions.length?
     // 多题模式
+    '<p class="reading" lang="en">'+(r.text||'').replace(/\n/g,'<br>').replace(/[A-Za-z]+/g,w=>'<button data-gloss="'+w+'">'+w+'</button>')+'</p>'+
+    (gloss?'<div class="tip" role="status">'+esc(gloss)+'</div>':'')+
+    '<div class="row"><button class="linkbtn" data-act="translate">'+(translation?'收起':'查看')+'全文翻译</button><button class="speaker" data-speak="'+esc(r.text||'')+'">◖)) 朗读全文</button></div>'+
+    (translation?'<div class="tip">'+esc(r.translation||'')+'</div>':'')+
     '<div class="reading-questions">'+r.questions.map((q,qi)=>{
       const userAns=saved&&saved.answers?saved.answers[qi]:null;
-      return '<div class="qblock"><h3>'+(qi+1)+'. '+esc(q.question)+'</h3><div class="choicegrid">'+q.options.map((o,i)=>'<button class="choice '+(saved?(i===q.correct?'correct':userAns===i?'wrong':''):'')+'" data-rq="'+readingIndex+'-'+qi+'-'+i+'" '+(saved?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+(saved?'<div class="feedback small">'+esc(q.explain||'')+'</div>':'')+'</div>';
+      const exp=q.explanation?('<b>['+esc(q.questionType||'')+']</b> 定位：'+esc(q.explanation.location||'')+'<br><b>正确答案：</b>'+esc(q.explanation.correctReason||'')+(q.explanation.wrongA&&q.explanation.wrongA.indexOf('正确答案')<0?'<br>'+esc(q.explanation.wrongA):'')+(q.explanation.wrongB?'<br>'+esc(q.explanation.wrongB):'')+(q.explanation.wrongC?'<br>'+esc(q.explanation.wrongC):'')+(q.explanation.wrongD?'<br>'+esc(q.explanation.wrongD):'')):(q.explain||'');
+      return '<div class="qblock"><h3>'+(qi+1)+'. '+esc(q.question)+'</h3><div class="choicegrid">'+q.options.map((o,i)=>'<button class="choice '+(saved?(i===q.correct?'correct':userAns===i?'wrong':''):'')+'" data-rq="'+readingIndex+'-'+qi+'-'+i+'" '+(saved?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+(saved?'<div class="feedback small">'+exp+'</div>':'')+'</div>';
     }).join('')+'</div>'+
     (!saved?'<div class="answerbar"><button class="btn" data-act="submitReading">提交本篇答案</button></div>':'')
     :
@@ -672,19 +677,25 @@ function submitReading(){
   save();toast('本篇答对 '+correct+' / '+r.questions.length+' 题');render();
 }
 
-// ===== 长难句（基础功能，后续扩充到100句） =====
-const LONG_SENTENCES=[
+// ===== 长难句（优先使用外部sentences.js数据，否则用内置5句） =====
+const _BUILTIN_SENTENCES=[
   {en:'Although many people believe that technology makes life easier, some researchers argue that it can also create new forms of stress.',zh:'虽然许多人认为技术让生活更容易，但一些研究者认为它也会带来新的压力。',structure:'主句：some researchers argue。Although引导让步状语从句；两个that引导宾语从句。',grammar:'让步状语从句 + 宾语从句'},
   {en:'The book that I borrowed from the library last week provides a clear explanation of how the human brain stores memories.',zh:'我上周从图书馆借的那本书清楚地解释了人脑如何储存记忆。',structure:'主句：The book provides explanation。that引导定语从句修饰book；how引导宾语从句。',grammar:'定语从句 + 宾语从句'},
   {en:'If students want to improve their English quickly, they should spend at least thirty minutes every day reading articles that are slightly above their current level.',zh:'如果学生想快速提高英语，他们应该每天至少花30分钟阅读略高于当前水平的文章。',structure:'主句：they should spend time reading。If引导条件状语从句；that引导定语从句。',grammar:'条件状语从句 + 定语从句 + spend time doing'},
   {en:'What surprised me most was that the students who had practiced every day scored much higher than those who only studied before the exam.',zh:'最让我惊讶的是，每天练习的学生比那些只在考试前学习的学生得分高得多。',structure:'主句：What surprised me was that...。What引导主语从句；that引导表语从句；两个who引导定语从句。',grammar:'主语从句 + 表语从句 + 定语从句 + 比较级'},
   {en:'Because the cost of living has increased rapidly in recent years, many young people find it difficult to save money even though they work full-time.',zh:'由于近年来生活成本快速上涨，许多年轻人发现即使全职工作也很难存钱。',structure:'主句：many young people find it difficult。Because引导原因状语从句；even though引导让步状语从句；it作形式宾语。',grammar:'原因状语从句 + 让步状语从句 + 形式宾语it'}
 ];
+// 统一格式：兼容外部{sentence,translation,structure,grammar,keywords,difficulty}和内置{en,zh,structure,grammar}
+const _EXT_SENTENCES=(typeof LONG_SENTENCES!=="undefined"&&Array.isArray(LONG_SENTENCES)&&LONG_SENTENCES.length>5)?LONG_SENTENCES:null;
+const LONG_SENTENCES=_EXT_SENTENCES?
+  _EXT_SENTENCES.map(s=>({en:s.sentence||s.en,zh:s.translation||s.zh,structure:s.structure,grammar:s.grammar,keywords:s.keywords||[],difficulty:s.difficulty||2})):
+  _BUILTIN_SENTENCES;
 let sentenceIndex=0;
 function sentence(){
   const s=LONG_SENTENCES[sentenceIndex%LONG_SENTENCES.length];
-  const show=sentenceIndex>=0;
-  return header('每日长难句','先找主干，再看翻译 · 共 '+LONG_SENTENCES.length+' 句（持续扩充中）')+
+  const dailyCount=Math.min(5,LONG_SENTENCES.length);
+  const todayStart=(dayNumber()-1)*dailyCount%LONG_SENTENCES.length;
+  return header('每日长难句','先找主干，再看翻译 · 共 '+LONG_SENTENCES.length+' 句 · 今日推荐 '+dailyCount+' 句')+
   '<div class="learnwrap"><div class="panel">'+
     '<span class="badge">第 '+(sentenceIndex%LONG_SENTENCES.length+1)+' / '+LONG_SENTENCES.length+' 句</span>'+
     '<p class="reading" lang="en" style="margin-top:16px">'+esc(s.en)+'</p>'+
@@ -715,13 +726,87 @@ function showSentenceDetail(type){
 }
 
 // ===== 语法（占位，后续完整开发） =====
+// ===== 语法系统框架 =====
+// 语法点数据（优先从外部grammar.js加载，否则用占位）
+const _GRAMMAR_PLACEHOLDER=[
+  {id:"g01",title:"一般现在时",category:"时态",frequency:10,level:1,explanation:"表示经常发生的动作或存在的状态。关键词：always, usually, often, sometimes, every day。第三人称单数动词加s/es。",examples:[{en:"She works in a hospital.",zh:"她在医院工作。"},{en:"They usually go to school by bus.",zh:"他们通常坐公交上学。"}],breakdown:"先找主语：She/They。再找动词：works/go。第三人称单数she用works，复数they用原形go。",examTip:"成考常考第三人称单数变化，以及时间标志词判断时态。",commonMistakes:["忘记第三人称单数加s","把一般现在时和现在进行时混淆"],basicQuestions:[],examQuestions:[]},
+  {id:"g02",title:"一般过去时",category:"时态",frequency:9,level:1,explanation:"表示过去某个时间发生的动作或存在的状态。关键词：yesterday, last week, ago, in 2020。规则动词加ed，不规则动词需记忆。",examples:[{en:"He went to Beijing yesterday.",zh:"他昨天去了北京。"},{en:"We visited the museum last week.",zh:"我们上周参观了博物馆。"}],breakdown:"先找时间标志：yesterday/last week → 用过去时。动词go→went，visit→visited。",examTip:"成考常考不规则动词的过去式，以及时间状语与时态的对应。",commonMistakes:["不规则动词过去式记错","在过去时中仍用动词原形"],basicQuestions:[],examQuestions:[]},
+  {id:"g03",title:"定语从句",category:"从句",frequency:9,level:2,explanation:"用一个句子修饰名词或代词。先行词是人用who/that，是物用which/that，是谁的用whose，是地点用where，是时间用when。技巧：先把中间修饰部分拿掉，找出主句的'谁+做什么'。",examples:[{en:"The book that I bought yesterday is very interesting.",zh:"我昨天买的那本书很有趣。"},{en:"The man who is standing there is my teacher.",zh:"站在那里的那个人是我的老师。"}],breakdown:"主句：The book is very interesting。that I bought yesterday是定语从句，修饰book。先拿掉中间部分，主句就清楚了。",examTip:"成考阅读中大量出现定语从句，看懂它就能看懂长句。语法题常考关系词的选择。",commonMistakes:["关系词用错（who/which/where混淆）","把定语从句当成两个独立句子"],basicQuestions:[],examQuestions:[]},
+  {id:"g04",title:"宾语从句",category:"从句",frequency:8,level:2,explanation:"用一个句子作动词的宾语。引导词：that（陈述事实，可省略）、if/whether（是否）、what/when/where/why/how（疑问词）。注意：从句用陈述语序，时态与主句呼应。",examples:[{en:"I think that English is important.",zh:"我认为英语很重要。"},{en:"She asked me where I lived.",zh:"她问我住在哪里。"}],breakdown:"主句：I think / She asked me。后面that/where引导的句子是宾语，作think/asked的宾语。注意where I lived是陈述语序，不是where did I live。",examTip:"成考常考宾语从句的语序（陈述语序）和时态呼应。",commonMistakes:["宾语从句用疑问语序","时态不与主句呼应"],basicQuestions:[],examQuestions:[]},
+  {id:"g05",title:"被动语态",category:"语态",frequency:8,level:2,explanation:"主语是动作的承受者。结构：be + 过去分词。各种时态的被动：am/is/are + done（一般现在），was/were + done（一般过去），will be + done（一般将来），can/must be + done（情态动词）。",examples:[{en:"English is spoken all over the world.",zh:"全世界都说英语。"},{en:"The bridge was built in 1990.",zh:"这座桥建于1990年。"}],breakdown:"主动：People speak English. → 被动：English is spoken (by people)。宾语English变主语，动词加be+done。",examTip:"成考常考各种时态的被动结构，以及by短语的用法。",commonMistakes:["忘记be动词","过去分词写错"],basicQuestions:[],examQuestions:[]},
+  {id:"g06",title:"非谓语动词",category:"非谓语",frequency:9,level:3,explanation:"不作谓语的动词形式：不定式(to do)、动名词(doing)、分词(doing/done)。不定式表目的或将来；动名词作主语/宾语；现在分词表主动进行；过去分词表被动完成。",examples:[{en:"I want to learn English well.",zh:"我想学好英语。"},{en:"Swimming is good for health.",zh:"游泳对健康有益。"},{en:"The boy standing there is my brother.",zh:"站在那里的男孩是我弟弟。"}],breakdown:"to learn是want的宾语（不定式）；Swimming是主语（动名词）；standing there修饰boy（现在分词，主动）。",examTip:"成考语法题重点，常考某些动词后接to do还是doing，以及分词作定语。",commonMistakes:["enjoy/finish/practice后接to do（应该是doing）","现在分词和过去分词混淆"],basicQuestions:[],examQuestions:[]}
+];
+const GRAMMAR_TOPICS=(typeof GRAMMAR_DATA!=="undefined"&&Array.isArray(GRAMMAR_DATA)&&GRAMMAR_DATA.length)?GRAMMAR_DATA:_GRAMMAR_PLACEHOLDER;
+let grammarViewMode='list',grammarCurrentId=null,grammarSession=null;
+
 function grammarView(){
-  return header('成考高频语法')+
-  '<div class="panel"><h2>30天冲刺语法</h2>'+
-  '<p class="muted">语法系统正在建设中。将按成考实际考查频率排序，每个语法点包含：人话讲解 → 简单例子 → 拆句子 → 考试怎么考 → 易错点 → 基础题 → 成考题 → 解析。</p>'+
-  '<h3 style="margin-top:20px">即将上线的语法点（按频率排序）：</h3>'+
-  '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-  ['时态','被动语态','非谓语','定语从句','名词性从句','状语从句','情态动词','主谓一致','比较级','介词','冠词','代词','形容词副词','虚拟语气','倒装强调'].map(g=>'<span class="word-chip">'+g+'</span>').join('')+
+  if(grammarViewMode==='detail'&&grammarCurrentId){
+    return grammarDetail(grammarCurrentId);
+  }
+  if(grammarViewMode==='practice'&&grammarSession){
+    return grammarPracticeView();
+  }
+  // 列表页
+  const learned=Object.keys(state.grammarProgress||{}).length;
+  const byCategory={};
+  GRAMMAR_TOPICS.forEach(g=>{byCategory[g.category]=(byCategory[g.category]||0)+1});
+  return header('成考高频语法','30天冲刺 · 按考试频率排序 · 共'+GRAMMAR_TOPICS.length+'个语法点')+
+  '<div class="panel"><div class="row"><h2>语法点列表</h2><span class="badge">已学 '+learned+' / '+GRAMMAR_TOPICS.length+'</span></div>'+
+  '<p class="muted small">按成考实际考查频率排序。每个语法点：人话讲解 → 简单例子 → 拆句子 → 考试怎么考 → 易错点 → 练习题。</p>'+
+  '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">'+Object.entries(byCategory).map(([cat,cnt])=>'<span class="word-chip">'+cat+' ('+cnt+')</span>').join('')+'</div>'+
+  '<div>'+GRAMMAR_TOPICS.map((g,i)=>{
+    const prog=state.grammarProgress&&state.grammarProgress[g.id];
+    const status=prog?(prog.mastered?'已掌握':prog.practiceCount?'练习中':'已阅读'):'未学习';
+    return '<div class="wordrow"><div><button class="linkbtn" style="padding:0;text-align:left" data-grammar="'+g.id+'"><strong>'+(i+1)+'. '+esc(g.title)+'</strong></button><small>'+esc(g.category)+' · 频率'+g.frequency+'/10 · 难度L'+g.level+'</small></div><span class="small">'+status+'</span><span class="badge '+(prog&&prog.mastered?'green':'')+'">'+status+'</span></div>';
+  }).join('')+'</div></div>';
+}
+
+function grammarDetail(id){
+  const g=GRAMMAR_TOPICS.find(x=>x.id===id);
+  if(!g){grammarViewMode='list';return grammarView();}
+  // 标记为已阅读
+  if(!state.grammarProgress)state.grammarProgress={};
+  if(!state.grammarProgress[id])state.grammarProgress[id]={read:true,practiceCount:0,correct:0,wrong:0,mastered:false,wrongQuestions:[]};
+  else state.grammarProgress[id].read=true;
+  save();
+  return header(esc(g.title),esc(g.category)+' · 频率'+g.frequency+'/10 · 难度L'+g.level)+
+  '<div class="learnwrap">'+
+  '<div class="row small muted"><button class="linkbtn" data-act="grammarBack">← 返回列表</button></div>'+
+  '<div class="panel">'+
+    '<span class="badge">'+esc(g.category)+'</span>'+
+    '<h2 style="margin-top:12px">'+esc(g.title)+'</h2>'+
+    '<div class="example"><p><b>📖 一句话讲懂：</b></p><p>'+esc(g.explanation||'')+'</p></div>'+
+    (g.examples&&g.examples.length?'<div class="example"><p><b>📝 简单例子：</b></p>'+g.examples.map(e=>'<p lang="en">'+esc(e.en)+'</p><p>'+esc(e.zh)+'</p>').join('')+'</div>':'')+
+    (g.breakdown?'<div class="example"><p><b>🔍 拆句子：</b></p><p>'+esc(g.breakdown)+'</p></div>':'')+
+    (g.examTip?'<div class="exam-meaning"><b>🎯 考试怎么考：</b>'+esc(g.examTip)+'</div>':'')+
+    (g.commonMistakes&&g.commonMistakes.length?'<div class="example"><p><b>⚠️ 容易错哪里：</b></p>'+g.commonMistakes.map(m=>'<p>· '+esc(m)+'</p>').join('')+'</div>':'')+
+    '<div class="answerbar" style="margin-top:24px">'+
+      '<button class="btn" data-act="grammarPractice">开始练习</button>'+
+      '<button class="btn outline" data-act="grammarBack">返回列表</button>'+
+    '</div>'+
+  '</div></div>';
+}
+
+function grammarPracticeView(){
+  const s=grammarSession;
+  if(!s||!s.questions||!s.questions.length){grammarViewMode='list';return grammarView();}
+  const q=s.questions[s.index];
+  if(!q){
+    // 完成
+    const pct=s.total?Math.round(s.correct/s.total*100):0;
+    return header('语法练习完成')+'<div class="learnwrap panel wordcard">'+
+      '<span class="badge green">已保存</span>'+
+      '<h2 style="margin-top:24px">正确率 '+pct+'%</h2>'+
+      '<div class="resultnum">'+s.correct+'<span style="font-size:18px"> / '+s.total+' 正确</span></div>'+
+      '<div class="answerbar"><button class="btn" data-act="grammarBack">返回列表</button></div></div>';
+  }
+  const fb=s.feedback;
+  return header('语法练习 · '+(s.index+1)+' / '+s.questions.length)+
+  '<div class="learnwrap"><div class="panel wordcard">'+
+    '<span class="badge">'+esc(q.type||'语法题')+'</span>'+
+    '<h3 style="margin-top:16px">'+esc(q.question)+'</h3>'+
+    '<div class="choicegrid">'+(q.options||[]).map((o,i)=>'<button class="choice '+(fb?(i===q.correct?'correct':fb.choice===i?'wrong':''):'')+'" data-gchoice="'+i+'" '+(fb?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+
+    (fb?'<div class="feedback"><b>'+(fb.correct?'✓ 正确':'✗ 错误')+'</b><br>'+esc(q.explanation||'')+'</div><div class="answerbar"><button class="btn" data-act="grammarNext">下一题 →</button></div>':'')+
   '</div></div>';
 }
 
@@ -823,6 +908,8 @@ function bind(){
     b.classList.add('selected');
   });
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(b.dataset.detail));
+  document.querySelectorAll('[data-grammar]').forEach(b=>b.onclick=()=>{grammarCurrentId=b.dataset.grammar;grammarViewMode='detail';render()});
+  document.querySelectorAll('[data-gchoice]').forEach(b=>b.onclick=()=>grammarAnswer(+b.dataset.gchoice));
   if($('#search'))$('#search').oninput=e=>{const pos=e.target.selectionStart;query=e.target.value;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
   if($('#settingsform'))$('#settingsform').onsubmit=e=>{
     e.preventDefault();
@@ -906,8 +993,36 @@ const actions={
   freeLearn:()=>{view='words';filter='unlearned';render()},
   quick20:()=>startQuick(20),quick50:()=>startQuick(50),quick80:()=>startQuick(80),
   quick100:()=>startQuick(100),quick120:()=>startQuick(120),quick150:()=>startQuick(150),
-  test20:()=>startTest(20),test50:()=>startTest(50),test100:()=>startTest(100)
+  test20:()=>startTest(20),test50:()=>startTest(50),test100:()=>startTest(100),
+  grammarBack:()=>{grammarViewMode='list';grammarCurrentId=null;grammarSession=null;render()},
+  grammarPractice:()=>{
+    const g=GRAMMAR_TOPICS.find(x=>x.id===grammarCurrentId);
+    if(!g)return;
+    const qs=(g.examQuestions&&g.examQuestions.length?g.examQuestions:[]).concat(g.basicQuestions||[]);
+    if(!qs.length){toast('该语法点暂无练习题，敬请期待');return}
+    grammarSession={topicId:g.id,questions:qs,index:0,total:0,correct:0,feedback:null};
+    grammarViewMode='practice';render();
+  },
+  grammarNext:()=>{
+    if(!grammarSession||!grammarSession.feedback)return;
+    grammarSession.index++;grammarSession.feedback=null;render();
+  }
 };
+
+function grammarAnswer(i){
+  const s=grammarSession;if(!s||s.feedback||!s.questions[s.index])return;
+  const q=s.questions[s.index];
+  const correct=i===q.correct;
+  s.feedback={correct,choice:i};
+  s.total++;s.correct+=correct?1:0;
+  // 记录进度
+  if(!state.grammarProgress)state.grammarProgress={};
+  const prog=state.grammarProgress[s.topicId]??={read:true,practiceCount:0,correct:0,wrong:0,mastered:false,wrongQuestions:[]};
+  prog.practiceCount++;
+  if(correct)prog.correct++;else{prog.wrong++;if(!prog.wrongQuestions.includes(s.index))prog.wrongQuestions.push(s.index)}
+  if(prog.correct>=5&&prog.correct/(prog.correct+prog.wrong)>=0.8)prog.mastered=true;
+  save();render();
+}
 
 // 键盘快捷键
 document.addEventListener('keydown',e=>{
