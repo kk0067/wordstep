@@ -277,7 +277,11 @@ function meView(){
   '</div>';
 }
 
-function navigate(v){view=v;glossPop=null;render();window.scrollTo({top:0,behavior:'smooth'})}
+function navigate(v){
+  // 每次从导航进入语法都先显示专题列表，避免上次练习把用户锁在题目里。
+  if(v==='grammar'&&view!=='grammar'){grammarViewMode='list';grammarCurrentId=null;grammarSession=null;}
+  view=v;glossPop=null;render();window.scrollTo({top:0,behavior:'smooth'});
+}
 
 function header(title,sub='河南成人高考 · 专升本英语 · 30天冲刺'){
   return '<div class="top"><div><div class="eyebrow">'+sub+'</div><h1>'+title+'</h1></div><span class="datepill">'+(remaining()>0?'距考试 <b>'+remaining()+'</b> 天':remaining()===0?'今天考试':'考试已过')+'</span></div>';
@@ -388,8 +392,59 @@ function startQuick(count){
     ws=ws.concat(weakWordsList().slice(0,20));
   }
   if(!ws.length){toast('暂时没有可学习的词，可以去复习或阅读。');return}
-  state.session={mode:'quick',queue:ws.map(w=>({id:w.id,stage:'choice',options:null,choice:-1,openTabs:['meaning','example','collocation']})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
+  state.session={mode:'quick',queue:ws.map(w=>({id:w.id,stage:'recognition',rating:null,openTabs:['meaning','example','collocation','usage']})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
   save();view='quick';render();
+}
+
+// 高频成考词的实用例句、搭配与用法。原始词库有内容时优先使用原始内容；
+// 缺少字段时给出可用于阅读、完形和写作的学习提示，页面不再出现空白卡片。
+const EXAM_WORD_CONTENT={
+  improve:['Regular reading can improve your English.','经常阅读能够提高你的英语。',['improve English','improve the quality of life'],'improve sth.；表示“提高、改善”，后面直接接名词。'],
+  provide:['The school provides students with free books.','学校为学生提供免费书籍。',['provide sb. with sth.','provide sth. for sb.'],'两种结构经常互换考查：provide sb. with sth. / provide sth. for sb.。'],
+  suggest:['The doctor suggested taking more exercise.','医生建议多锻炼。',['suggest doing sth.','suggest that sb. (should) do sth.'],'suggest 后常接 doing；接 that 从句时可用 should + 动词原形。'],
+  allow:['Mobile phones are not allowed in the exam room.','考场内不允许使用手机。',['allow sb. to do sth.','be allowed to do sth.'],'主动结构接 sb. to do；被动结构是 be allowed to do。'],
+  require:['The job requires good communication skills.','这份工作需要良好的沟通能力。',['require sb. to do sth.','be required to do sth.'],'常见于通知和说明文；被动语态 be required to do 表示“被要求做”。'],
+  avoid:['We should avoid making the same mistake again.','我们应避免再次犯同样的错误。',['avoid doing sth.','avoid a problem'],'avoid 后接名词或 doing，不接 to do。'],
+  consider:['You should consider changing your study plan.','你应该考虑改变学习计划。',['consider doing sth.','be considered as'],'表示“考虑”时后接 doing；被动结构常表示“被认为是”。'],
+  decide:['She decided to continue her education.','她决定继续接受教育。',['decide to do sth.','make a decision'],'decide 后接 to do；名词形式 decision 常用于写作。'],
+  expect:['We expect the situation to improve soon.','我们预计情况很快会改善。',['expect to do sth.','expect sb. to do sth.'],'expect 可接 to do，也可接“人 + to do”。'],
+  encourage:['Teachers encourage students to ask questions.','老师鼓励学生提问。',['encourage sb. to do sth.','encourage participation'],'固定结构 encourage sb. to do sth.。'],
+  prevent:['Exercise can help prevent many diseases.','锻炼有助于预防许多疾病。',['prevent sb. from doing sth.','prevent disease'],'prevent sb. from doing 表示“阻止某人做某事”。'],
+  depend:['Success depends on hard work.','成功取决于努力。',['depend on','it depends'],'depend 通常与 on 连用；It depends 表示“视情况而定”。'],
+  result:['Hard work often results in success.','努力常常带来成功。',['result in','result from','as a result'],'result in 表示“导致”，result from 表示“由……引起”，方向相反。'],
+  affect:['Lack of sleep can affect your health.','睡眠不足会影响健康。',['affect health','be affected by'],'affect 通常作动词“影响”；不要和名词 effect 混淆。'],
+  effect:['The new policy had a positive effect on education.','新政策对教育产生了积极影响。',['have an effect on','take effect'],'effect 通常作名词；have an effect on 表示“对……有影响”。'],
+  increase:['The number of online learners has increased rapidly.','在线学习者的数量迅速增加。',['increase by','increase to','an increase in'],'increase by 是“增加了多少”，increase to 是“增加到多少”。'],
+  reduce:['Public transport can reduce air pollution.','公共交通能够减少空气污染。',['reduce costs','reduce the risk of'],'常见于环保、健康类阅读和写作，表示“减少、降低”。'],
+  benefit:['Regular exercise benefits both body and mind.','经常锻炼有益于身心。',['benefit from','be beneficial to'],'benefit from 是“从……受益”；形容词 beneficial 常与 to 连用。'],
+  opportunity:['Education gives people more job opportunities.','教育给人们更多就业机会。',['have an opportunity to do','job opportunity'],'opportunity 后常接 to do，表示“做某事的机会”。'],
+  ability:['Reading develops the ability to think independently.','阅读培养独立思考能力。',['have the ability to do','reading ability'],'ability 后常接 to do；able 的结构是 be able to do。'],
+  support:['The government should support adult education.','政府应支持成人教育。',['support a plan','with the support of'],'既可作动词也可作名词；with the support of 表示“在……支持下”。'],
+  include:['The price includes breakfast and service.','价格包含早餐和服务。',['include doing sth.','be included in'],'include 表示整体中包含部分；被动形式常见于说明文。'],
+  remain:['The problem remains difficult to solve.','这个问题仍然很难解决。',['remain unchanged','remain to be seen'],'remain 可作系动词，后接形容词；remain to be seen 表示“仍有待观察”。'],
+  manage:['He managed to finish the work on time.','他设法按时完成了工作。',['manage to do sth.','manage a team'],'manage to do 强调克服困难后“成功做到”。'],
+  succeed:['You will succeed if you keep trying.','如果坚持尝试，你就会成功。',['succeed in doing sth.','achieve success'],'succeed in 后接 doing；名词是 success，形容词是 successful。'],
+  spend:['She spends an hour reading every day.','她每天花一小时阅读。',['spend time doing sth.','spend money on sth.'],'人 + spend + 时间/金钱 + on sth. / doing sth.。'],
+  pay:['You should pay attention to the key words.','你应该注意关键词。',['pay attention to','pay for'],'pay attention to 是阅读和写作高频搭配；pay for 表示“为……付款”。'],
+  finish:['Please finish reading the passage first.','请先读完这篇文章。',['finish doing sth.','finish the task'],'finish 后接 doing，不接 to do。'],
+  begin:['The meeting will begin at nine.','会议将在九点开始。',['begin to do','begin doing','at the beginning of'],'begin 后可接 to do 或 doing；名词 beginning 常用于固定搭配。'],
+  although:['Although he was tired, he continued working.','虽然他很累，但仍继续工作。',['although + 句子','although...（不与but连用）'],'although 引导让步从句；同一句中通常不再使用 but。'],
+  while:['Some people prefer cities, while others like the countryside.','一些人喜欢城市，而另一些人喜欢乡村。',['while + 句子','for a while'],'阅读中 while 常表示“然而、形成对比”，不只表示“当……时”。'],
+  because:['He stayed at home because it was raining.','因为下雨，他待在家里。',['because + 句子','because of + 名词'],'because 后接完整句子；because of 后接名词或 doing。'],
+  if:['If you practice every day, you will make progress.','如果每天练习，你就会进步。',['if + 一般现在时','if/whether'],'条件句常用“主将从现”；作“是否”时可与 whether 比较。'],
+  through:['People can learn new skills through online courses.','人们可以通过网络课程学习新技能。',['go through','through practice'],'可表示“穿过”或“通过某种方式”；go through 还可表示“经历”。']
+};
+
+function wordStudyContent(w){
+  const curated=EXAM_WORD_CONTENT[String(w.word||'').toLowerCase()];
+  const example=w.example||(curated&&curated[0])||('The word “'+w.word+'” often appears in reading passages.');
+  const translation=w.translation||(curated&&curated[1])||('“'+w.word+'”是阅读中需要结合上下文识别的常用词。');
+  const collocations=(w.collocations&&w.collocations.length?w.collocations:(curated&&curated[2]))||[
+    w.partOfSpeech&&w.partOfSpeech.startsWith('v')?(w.word+' + 宾语（结合语境）'):(w.word+'（结合上下文识别）')
+  ];
+  const usage=w.commonUsage||(curated&&curated[3])||w.examMeaning||('先记核心义“'+w.meaning+'”，再回到句子中判断词性和具体含义。');
+  const examUsage=w.examUsage||w.examMeaning||('成考阅读先看前后句逻辑，不要只按一个中文意思硬译。');
+  return {example,translation,collocations,commonUsage:usage,examUsage};
 }
 
 function quickLearn(){
@@ -398,7 +453,7 @@ function quickLearn(){
     return header('快速背词')+'<div class="panel"><p>选择每次学习的词数：</p>'+
       '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
       [20,50,80,100,120,150].map(n=>'<button class="btn" data-act="quick'+n+'">'+n+' 词</button>').join('')+
-      '</div><p class="muted small" style="margin-top:16px">先选意思，再看详解（释义/例句/搭配/用法/词根词缀），最后按熟悉程度评级。</p></div>';
+      '</div><p class="muted small" style="margin-top:16px">看到单词后只判断“认识、模糊、不认识”。模糊或不认识时会立即显示释义、例句、搭配和考试用法。</p></div>';
   }
   const item=s.queue[0];
   if(!item){
@@ -406,7 +461,7 @@ function quickLearn(){
     return header('本组完成')+'<div class="learnwrap panel wordcard">'+
       '<span class="badge green">已保存</span>'+
       '<h2 style="margin-top:24px">完成 '+s.done+' 词，用时 '+elapsed+' 秒</h2>'+
-      '<div class="resultnum">'+s.correct+'<span style="font-size:18px"> 选对</span></div>'+
+      '<div class="resultnum">'+s.correct+'<span style="font-size:18px"> 个认识</span></div>'+
       '<p class="muted">不认识的词会在稍后再次出现，并加入复习队列。</p>'+
       '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'+
       '<button class="btn" data-act="finishQuick">回到首页</button>'+
@@ -419,12 +474,8 @@ function quickLearn(){
   const total=s.done+s.queue.length;
   const progressPct=Math.min(100,s.done/total*100);
 
-  // 阶段一：选义
-  if(item.stage==='choice'){
-    if(!item.options){
-      const opts=choices(w);
-      item.options=opts.map(o=>({id:o.id,meaning:o.meaning}));
-    }
+  // 阶段一：只判断熟悉度，不再做中文释义选择题
+  if(item.stage==='recognition'){
     return header('快速背词 · '+s.done+' / '+total)+
     '<div class="learnwrap">'+
       '<div class="row small muted"><button class="linkbtn" data-nav="home">← 暂停</button><span>已完成 '+s.done+' · 还剩 '+s.queue.length+'</span></div>'+
@@ -435,16 +486,19 @@ function quickLearn(){
         '<div class="phonetic" style="font-size:20px">'+esc(w.phonetic||'')+'</div>'+
         '<div class="pos" style="margin-bottom:8px">'+esc(w.partOfSpeech||'')+'</div>'+
         '<button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button>'+
-        '<p class="muted small" style="margin:20px 0 12px">下面哪个是它的意思？</p>'+
-        '<div class="choicegrid">'+item.options.map((o,i)=>
-          '<button class="choice" data-quickchoice="'+i+'" style="font-size:16px;padding:16px">'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+'</button>'
-        ).join('')+'</div>'+
+        '<p class="muted small" style="margin:20px 0 12px">看到这个词，你能马上想起意思和用法吗？</p>'+
+        '<div class="answerbar">'+
+          '<button class="btn" style="background:#26724c" data-act="quickKnow">✓ 认识</button>'+ 
+          '<button class="btn" style="background:#d4930a" data-act="quickFuzzy">~ 模糊</button>'+ 
+          '<button class="btn" style="background:#b44529" data-act="quickUnknown">✗ 不认识</button>'+ 
+        '</div>'+ 
+        '<button class="linkbtn" style="margin-top:14px" data-act="quickShowDetail">先看讲解再判断</button>'+
       '</div>'+
     '</div>';
   }
 
   // 阶段二：详解 + 评级
-  const choseCorrect=item.options&&item.options[item.choice]&&item.options[item.choice].id===w.id;
+  const study=wordStudyContent(w);
   const open=item.openTabs||['meaning'];
   const tab=(key,label,content)=>{
     const isOpen=open.includes(key);
@@ -465,23 +519,20 @@ function quickLearn(){
     '<div class="progress"><div style="width:'+progressPct+'%"></div></div>'+
     '<div class="panel wordcard">'+
       '<div class="row"><div><div class="word" lang="en" style="font-size:36px">'+esc(w.word)+'</div><div class="phonetic">'+esc(w.phonetic||'')+' · '+esc(w.partOfSpeech||'')+'</div></div><button class="speaker" data-speak="'+esc(w.word)+'">◖))</button></div>'+
-      // 选义结果：只给一条简洁提示，不再显示四个选项
-      (choseCorrect?'<div style="background:#eaf8f0;color:#26724c;border-radius:10px;padding:10px 14px;font-weight:600;margin:12px 0 4px">✓ 选对了，认真过一遍下面的详解</div>':'<div style="background:#fff1ed;color:#b44529;border-radius:10px;padding:10px 14px;font-weight:600;margin:12px 0 4px">✗ 选错了，正确意思是「'+esc(w.meaning)+'」，重点记忆</div>')+
+      '<div style="background:#fff7e8;color:#7a5310;border-radius:10px;padding:10px 14px;font-weight:600;margin:12px 0 4px">'+(item.rating==='fuzzy'?'有印象但不确定：重点看搭配和例句':item.rating==='unknown'?'暂时不认识：现在看懂即可，系统会尽快再安排': '先看讲解，再按真实情况选择')+'</div>'+ 
       // 详解小按钮（折叠面板）
       tab('meaning','📖 释义','<p style="font-size:18px;font-weight:600">'+esc(w.meaning)+'</p>'+(w.examMeaning?'<p style="margin-top:6px"><b>考试常考：</b>'+esc(w.examMeaning)+'</p>':''))+
-      tab('example','📝 例句',(w.example?'<p lang="en" style="font-size:15px">'+esc(w.example)+' <button class="speaker" data-speak="'+esc(w.example)+'">◖))</button></p>'+(w.translation?'<p class="small" style="margin-top:4px">'+esc(w.translation)+'</p>':''):'<p class="small muted">该词暂无例句。</p>'))+
-      tab('collocation','🔗 搭配/词组',(w.collocations&&w.collocations.length?'<div style="display:flex;gap:6px;flex-wrap:wrap">'+w.collocations.map(c=>'<span lang="en" style="background:#f4f1ff;border-radius:6px;padding:4px 10px;font-size:14px">'+esc(c)+'</span>').join('')+'</div>':'<p class="small muted">暂无搭配数据。</p>'))+
-      tab('usage','💡 用法',(w.commonUsage?'<p><b>常见用法：</b>'+esc(w.commonUsage)+'</p>':'')+(w.examUsage?'<p style="margin-top:6px"><b>考试用法：</b>'+esc(w.examUsage)+'</p>':'')+(!w.commonUsage&&!w.examUsage?'<p class="small muted">暂无用法说明。</p>':''))+
+      tab('example','📝 例句','<p lang="en" style="font-size:15px">'+esc(study.example)+' <button class="speaker" data-speak="'+esc(study.example)+'">◖))</button></p><p class="small" style="margin-top:4px">'+esc(study.translation)+'</p>')+
+      tab('collocation','🔗 搭配/词组','<div style="display:flex;gap:6px;flex-wrap:wrap">'+study.collocations.map(c=>'<span lang="en" style="background:#f4f1ff;border-radius:6px;padding:4px 10px;font-size:14px">'+esc(c)+'</span>').join('')+'</div>')+
+      tab('usage','💡 用法','<p><b>常见用法：</b>'+esc(study.commonUsage)+'</p><p style="margin-top:6px"><b>考试用法：</b>'+esc(study.examUsage)+'</p>')+
       tab('affix','🌳 词根词缀',affixHtml+(w.wordFamily&&w.wordFamily.length?'<p style="margin-top:8px"><b>同根词：</b>'+w.wordFamily.map(esc).join(', ')+'</p>':''))+
       (w.specialMeaning?tab('special','⭐ 熟词生义','<p style="color:#b44529">'+esc(w.specialMeaning)+'</p>'):'')+
       (w.confuseWith&&w.confuseWith.length?tab('confuse','⚠️ 易混词','<p>'+w.confuseWith.map(esc).join('；')+'</p>'):'')+
-      // 评级按钮
+      // 已先选择熟悉度时只需继续；主动打开讲解时仍可评级
       '<div class="answerbar" style="margin-top:24px">'+
-        '<button class="btn" style="background:#26724c" data-act="know">✓ 认识</button>'+
-        '<button class="btn" style="background:#d4930a" data-act="fuzzy">~ 模糊</button>'+
-        '<button class="btn" style="background:#b44529" data-act="unknown">✗ 不会</button>'+
-      '</div>'+
-      '<div class="hint">根据你对这个词的真实掌握程度选择 · 键盘 1/2/3</div>'+
+        (item.rating?'<button class="btn" data-act="confirmQuickRating">看完了，继续下一个 →</button>':'<button class="btn" style="background:#26724c" data-act="quickKnow">✓ 认识</button><button class="btn" style="background:#d4930a" data-act="quickFuzzy">~ 模糊</button><button class="btn" style="background:#b44529" data-act="quickUnknown">✗ 不认识</button>')+
+      '</div>'+ 
+      '<div class="hint">系统会根据熟悉度安排下一次复习 · 键盘 1/2/3</div>'+ 
     '</div>'+
   '</div>';
 }
@@ -500,17 +551,12 @@ function detailSection(w){
   return html;
 }
 
-// 阶段一：用户选择了意思
-function quickChoose(i){
-  const s=state.session;if(!s||s.mode!=='quick'||!s.queue[0]||s.queue[0].stage!=='choice')return;
+function quickRecognize(rating,showOnly=false){
+  const s=state.session;if(!s||s.mode!=='quick'||!s.queue[0])return;
   const item=s.queue[0];
-  item.choice=i;
-  item.stage='detail';
-  if(!item.openTabs||item.openTabs.length<=1)item.openTabs=['meaning','example','collocation'];
-  const w=getWord(item.id);
-  const choseCorrect=item.options[i]&&item.options[i].id===w.id;
-  if(choseCorrect)s.correct++;
-  save();render();
+  if(showOnly){item.rating=null;item.stage='detail';save();render();return;}
+  if(rating==='know'){quickAnswer('know');return;}
+  item.rating=rating;item.stage='detail';item.openTabs=['meaning','example','collocation','usage'];save();render();
 }
 // 折叠面板切换
 function toggleWordTab(tabKey){
@@ -534,7 +580,7 @@ function quickAnswer(known){
   s.done++;
   // 只有"不会"的词才插入队列后面立即重试；"模糊"的词2天后复习
   if(!correct&&!fuzzy&&!item.retry){
-    s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'choice',options:null,choice:-1,openTabs:['meaning','example','collocation'],retry:true});
+    s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'recognition',rating:null,openTabs:['meaning','example','collocation','usage'],retry:true});
   }
   save();render();
 }
@@ -1182,7 +1228,7 @@ function grammarPracticeView(){
   }
   const fb=s.feedback;
   return header('语法练习 · '+(s.index+1)+' / '+s.questions.length)+
-  '<div class="learnwrap"><div class="panel wordcard">'+
+  '<div class="learnwrap"><div class="row small muted" style="margin-bottom:10px"><button class="linkbtn" data-act="grammarBack">← 返回语法专题列表</button><span>'+esc((GRAMMAR_TOPICS.find(g=>g.id===s.topicId)||{}).title||'专项练习')+'</span></div><div class="panel wordcard">'+
     '<span class="badge">'+esc(q.type||'语法题')+'</span>'+
     '<h3 style="margin-top:16px">'+esc(q.question)+'</h3>'+
     '<div class="choicegrid">'+(q.options||[]).map((o,i)=>'<button class="choice '+(fb?(i===q.correct?'correct':fb.choice===i?'wrong':''):'')+'" data-gchoice="'+i+'" '+(fb?'disabled':'')+'>'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div>'+
@@ -1331,7 +1377,6 @@ function bind(){
   document.querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>speak(b.dataset.speak));
   document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>actions[b.dataset.act]?.());
   document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>answer(+b.dataset.choice));
-  document.querySelectorAll('[data-quickchoice]').forEach(b=>b.onclick=()=>quickChoose(+b.dataset.quickchoice));
   document.querySelectorAll('[data-wordtab]').forEach(b=>b.onclick=()=>toggleWordTab(b.dataset.wordtab));
   document.querySelectorAll('[data-testchoice]').forEach(b=>b.onclick=()=>testAnswer(+b.dataset.testchoice));
   document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;wordPage=0;render()});
@@ -1412,6 +1457,11 @@ const actions={saveWriting:()=>{const x=document.querySelector('#writingAnswer')
   know:()=>quickAnswer('know'),
   fuzzy:()=>quickAnswer('fuzzy'),
   unknown:()=>{if(state.session?.mode==='quick')quickAnswer('unknown');else answer(-1)},
+  quickKnow:()=>quickRecognize('know'),
+  quickFuzzy:()=>quickRecognize('fuzzy'),
+  quickUnknown:()=>quickRecognize('unknown'),
+  quickShowDetail:()=>quickRecognize(null,true),
+  confirmQuickRating:()=>{const item=state.session?.queue?.[0];if(item&&item.rating)quickAnswer(item.rating)},
   toggleDetail:()=>{if(state.session?.queue[0]){state.session.queue[0].showDetail=!state.session.queue[0].showDetail;render()}},
   next:()=>next(),
   nextTest:()=>{const s=state.session;if(!s?.feedback)return;s.queue.shift();s.feedback=null;save();render()},
@@ -1527,16 +1577,12 @@ document.addEventListener('keydown',e=>{
   if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)||document.querySelector('dialog[open]'))return;
   if(view==='quick'){
     const item=state.session?.queue?.[0];
-    if(item&&item.stage==='choice'){
-      // 选义阶段：1-4 或 A-D
-      const numMap={'1':0,'2':1,'3':2,'4':3,'a':0,'b':1,'c':2,'d':3};
-      const k=e.key.toLowerCase();
-      if(numMap[k]!==undefined)quickChoose(numMap[k]);
+    if(item&&item.stage==='recognition'){
+      if(e.key==='1')actions.quickKnow();
+      if(e.key==='2')actions.quickFuzzy();
+      if(e.key==='3')actions.quickUnknown();
     }else{
-      // 详情阶段：1=认识 2=模糊 3=不会
-      if(e.key==='1')actions.know();
-      if(e.key==='2')actions.fuzzy();
-      if(e.key==='3')actions.unknown();
+      if(e.key==='Enter'&&item?.rating)actions.confirmQuickRating();
     }
   }
   if((view==='review'||view==='test')&&['1','2','3','4'].includes(e.key)){
