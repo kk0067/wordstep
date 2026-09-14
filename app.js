@@ -220,8 +220,8 @@ const navs=[
   ['reading','▧','阅读训练'],
   ['cloze','▦','完形填空'],
   ['sentence','⌁','长难句'],
-  ['dialogue','💬','补全对话'],
   ['grammar','§','语法'],
+  ['writing','✍️','作文'],
   ['report','▥','学习报告'],
   ['settings','⚙','设置']
 ];
@@ -233,7 +233,7 @@ function header(title,sub='河南成人高考 · 专升本英语 · 30天冲刺'
 }
 
 function render(){
-  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,readingExam:readingExamView,cloze:clozeView,dialogue:dialogueView,sentence:sentence,grammar:grammarView,report:report,settings:settings}[view]||home)()+'</main></div>';
+  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,readingExam:readingExamView,cloze:clozeView,sentence:sentence,grammar:grammarView,writing:writingView,report:report,settings:settings}[view]||home)()+'</main></div>';
   bind();
 }
 
@@ -300,7 +300,23 @@ function home(){
   '<div class="footer">词库基于成人高考专升本英语大纲与真题高频词构建。自编练习，并非官方完整考纲或真题。</div>';
 }
 
-// ===== 快速背词模式 =====
+// ===== 词根词缀分析 =====
+const PREFIX_MAP={'un':'不/非（否定）','dis':'不/相反','re':'再/重新','pre':'在…之前','mis':'错误地','in':'不/向内','im':'不/向内(b/m/p前)','ir':'不(r前)','il':'不(l前)','over':'过度/在…上','under':'不足/在…下','sub':'在…下/次级','inter':'相互/在…之间','trans':'横跨/转变','semi':'半','anti':'反对','en':'使…','ex':'向外','fore':'预先','non':'非/不','out':'超过/向外','multi':'多','micro':'微小','auto':'自动/自身','tele':'远','de':'去除/向下','co':'共同','counter':'反/对抗','extra':'超出','post':'在…后','pro':'向前/支持'};
+const SUFFIX_MAP={'tion':'名词·动作/状态','sion':'名词·动作/状态','ment':'名词·行为/结果','ness':'名词·性质/状态','ity':'名词·性质','er':'名词·人/物','or':'名词·人/物','ist':'名词·人(专家)','ance':'名词·状态','ence':'名词·状态','ship':'名词·关系/身份','hood':'名词·时期','ism':'名词·主义','able':'形容词·可…的','ible':'形容词·可…的','ful':'形容词·充满…的','less':'形容词·无…的','ous':'形容词·有…性质','ive':'形容词·有…倾向','ical':'形容词·…的','ic':'形容词·…的','ly':'副词·…地','ish':'形容词·稍…的','ary':'形容词·与…有关','ent':'形容词·…的','ant':'形容词·…的','ate':'动词·使…','en':'动词·使…','ify':'动词·使…化','ize':'动词·使…化','ise':'动词·使…化','ward':'副词·向…','ology':'名词·…学'};
+function analyzeAffixes(word){
+  const w=word.toLowerCase().replace(/[^a-z]/g,'');
+  if(w.length<5)return [];
+  const parts=[];
+  const preKeys=Object.keys(PREFIX_MAP).sort((a,b)=>b.length-a.length);
+  let rest=w,prefix='';
+  for(const p of preKeys){if(w.startsWith(p)&&w.length>p.length+2){prefix=p;rest=w.slice(p.length);parts.push({type:'前缀',text:p+'-',mean:PREFIX_MAP[p]});break}}
+  const sufKeys=Object.keys(SUFFIX_MAP).sort((a,b)=>b.length-a.length);
+  for(const s of sufKeys){if(rest.endsWith(s)&&rest.length>s.length+1){rest=rest.slice(0,-s.length);parts.push({type:'后缀',text:'-'+s,mean:SUFFIX_MAP[s]});break}}
+  if(rest.length>=2&&(prefix||parts.some(x=>x.type==='后缀')))parts.push({type:'词根',text:rest,mean:'核心部分，承载基本含义'});
+  return parts;
+}
+
+// ===== 快速背词模式（不背单词式：选义→详情→评级） =====
 function startQuick(count){
   const goal=count||state.dailyNewGoal;
   const t=today();
@@ -313,7 +329,7 @@ function startQuick(count){
     ws=ws.concat(weakWordsList().slice(0,20));
   }
   if(!ws.length){toast('暂时没有可学习的词，可以去复习或阅读。');return}
-  state.session={mode:'quick',queue:ws.map(w=>({id:w.id,stage:'learn'})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
+  state.session={mode:'quick',queue:ws.map(w=>({id:w.id,stage:'choice',options:null,choice:-1,openTabs:['meaning']})),done:0,total:ws.length,feedback:null,correct:0,startTime:Date.now()};
   save();view='quick';render();
 }
 
@@ -323,7 +339,7 @@ function quickLearn(){
     return header('快速背词')+'<div class="panel"><p>选择每次学习的词数：</p>'+
       '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
       [20,50,80,100,120,150].map(n=>'<button class="btn" data-act="quick'+n+'">'+n+' 词</button>').join('')+
-      '</div><p class="muted small" style="margin-top:16px">快速背词只显示 单词/音标/词性/核心意思，操作 认识/模糊/不会 后快速下一词。点击展开查看例句和搭配。</p></div>';
+      '</div><p class="muted small" style="margin-top:16px">先选意思，再看详解（释义/例句/搭配/用法/词根词缀），最后按熟悉程度评级。</p></div>';
   }
   const item=s.queue[0];
   if(!item){
@@ -331,8 +347,8 @@ function quickLearn(){
     return header('本组完成')+'<div class="learnwrap panel wordcard">'+
       '<span class="badge green">已保存</span>'+
       '<h2 style="margin-top:24px">完成 '+s.done+' 词，用时 '+elapsed+' 秒</h2>'+
-      '<div class="resultnum">'+s.correct+'<span style="font-size:18px"> 认识</span></div>'+
-      '<p class="muted">不认识的词会在10分钟后再次出现，并加入复习队列。</p>'+
+      '<div class="resultnum">'+s.correct+'<span style="font-size:18px"> 选对</span></div>'+
+      '<p class="muted">不认识的词会在稍后再次出现，并加入复习队列。</p>'+
       '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'+
       '<button class="btn" data-act="finishQuick">回到首页</button>'+
       '<button class="btn outline" data-act="continueQuick">继续学 '+state.dailyNewGoal+' 词</button>'+
@@ -341,27 +357,81 @@ function quickLearn(){
   }
   const w=getWord(item.id);
   if(!w){s.queue.shift();save();render();return ''}
-  const showDetail=item.showDetail;
+  const total=s.done+s.queue.length;
+  const progressPct=Math.min(100,s.done/total*100);
 
-  return header('快速背词 · '+s.done+' / '+(s.done+s.queue.length))+
+  // 阶段一：选义
+  if(item.stage==='choice'){
+    if(!item.options){
+      const opts=choices(w);
+      item.options=opts.map(o=>({id:o.id,meaning:o.meaning}));
+    }
+    return header('快速背词 · '+s.done+' / '+total)+
+    '<div class="learnwrap">'+
+      '<div class="row small muted"><button class="linkbtn" data-nav="home">← 暂停</button><span>已完成 '+s.done+' · 还剩 '+s.queue.length+'</span></div>'+
+      '<div class="progress"><div style="width:'+progressPct+'%"></div></div>'+
+      '<div class="panel wordcard" style="text-align:center">'+
+        '<span class="badge">Level '+w.level+(w.tags&&w.tags.includes('Core2000')?' · Core 2000':w.tags&&w.tags.includes('Core3000')?' · Core 3000':'')+'</span>'+
+        '<div class="word" lang="en" style="font-size:48px;margin:18px 0 6px">'+esc(w.word)+'</div>'+
+        '<div class="phonetic" style="font-size:20px">'+esc(w.phonetic||'')+'</div>'+
+        '<div class="pos" style="margin-bottom:8px">'+esc(w.partOfSpeech||'')+'</div>'+
+        '<button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button>'+
+        '<p class="muted small" style="margin:20px 0 12px">下面哪个是它的意思？</p>'+
+        '<div class="choicegrid">'+item.options.map((o,i)=>
+          '<button class="choice" data-quickchoice="'+i+'" style="font-size:16px;padding:16px">'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+'</button>'
+        ).join('')+'</div>'+
+      '</div>'+
+    '</div>';
+  }
+
+  // 阶段二：详解 + 评级
+  const choseCorrect=item.options&&item.options[item.choice]&&item.options[item.choice].id===w.id;
+  const open=item.openTabs||['meaning'];
+  const tab=(key,label,content)=>{
+    const isOpen=open.includes(key);
+    return '<div style="border:1px solid #e3e6ee;border-radius:10px;margin-bottom:8px;overflow:hidden">'+
+      '<button class="linkbtn" data-wordtab="'+key+'" style="display:block;width:100%;text-align:left;padding:12px 14px;background:'+(isOpen?'#f0f4ff':'#fafbfd')+';border:none;font-weight:600">'+(isOpen?'▾':'▸')+' '+label+'</button>'+
+      (isOpen?'<div style="padding:10px 14px 14px">'+content+'</div>':'')+
+    '</div>';
+  };
+  // 词根词缀
+  const affixes=analyzeAffixes(w.word);
+  const affixHtml=affixes.length?
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+affixes.map(a=>'<span style="background:#eef4ff;border-radius:6px;padding:4px 10px;font-size:13px"><b>'+a.text+'</b> '+esc(a.mean)+'</span>').join('')+'</div>':
+    '<p class="small muted">该词为简单词或暂未拆解。</p>';
+
+  return header('快速背词 · '+s.done+' / '+total)+
   '<div class="learnwrap">'+
     '<div class="row small muted"><button class="linkbtn" data-nav="home">← 暂停</button><span>已完成 '+s.done+' · 还剩 '+s.queue.length+'</span></div>'+
-    '<div class="progress"><div style="width:'+Math.min(100,s.done/(s.done+s.queue.length)*100)+'%"></div></div>'+
+    '<div class="progress"><div style="width:'+progressPct+'%"></div></div>'+
     '<div class="panel wordcard">'+
-      '<span class="badge">Level '+w.level+' · '+(w.tags&&w.tags.includes('Core2000')?'Core 2000':w.tags&&w.tags.includes('Core3000')?'Core 3000':'')+'</span>'+
-      '<div class="word" lang="en">'+esc(w.word)+'</div>'+
-      '<div class="phonetic">'+esc(w.phonetic||'')+'</div>'+
-      '<div class="pos">'+esc(w.partOfSpeech||'')+'</div>'+
-      '<button class="speaker" data-speak="'+esc(w.word)+'">◖)) 听发音</button>'+
-      '<div class="meaning">'+esc(w.meaning)+'</div>'+
-      (w.examMeaning?'<div class="exam-meaning">考试：'+esc(w.examMeaning)+'</div>':'')+
-      (showDetail?detailSection(w):(w.example||w.collocations||w.commonUsage||w.examUsage||w.specialMeaning||w.wordFamily||w.confuseWith?'<button class="linkbtn" data-act="toggleDetail" style="margin-top:10px">展开详情（例句/搭配/用法）</button>':''))+
-      '<div class="answerbar" style="margin-top:28px">'+
+      '<div class="row"><div><div class="word" lang="en" style="font-size:36px">'+esc(w.word)+'</div><div class="phonetic">'+esc(w.phonetic||'')+' · '+esc(w.partOfSpeech||'')+'</div></div><button class="speaker" data-speak="'+esc(w.word)+'">◖))</button></div>'+
+      // 选择结果回顾
+      '<div class="choicegrid" style="margin:14px 0">'+item.options.map((o,i)=>{
+        const isCorrectOpt=o.id===w.id;
+        const isChosen=i===item.choice;
+        let cls='choice';
+        if(isCorrectOpt)cls+=' correct';
+        else if(isChosen)cls+=' wrong';
+        if(isCorrectOpt||isChosen)cls+=' shown';
+        return '<button class="'+cls+'" disabled>'+String.fromCharCode(65+i)+'. '+esc(o.meaning)+(isCorrectOpt?' ✓':isChosen?' ✗':'')+'</button>';
+      }).join('')+'</div>'+
+      (choseCorrect?'<p style="color:#26724c;font-weight:600;margin:8px 0">✓ 选对了</p>':'<p style="color:#b44529;font-weight:600;margin:8px 0">✗ 选错了，正确意思已标绿，请认真看下面详解</p>')+
+      // 详解小按钮（折叠面板）
+      tab('meaning','📖 释义','<p style="font-size:18px;font-weight:600">'+esc(w.meaning)+'</p>'+(w.examMeaning?'<p style="margin-top:6px"><b>考试常考：</b>'+esc(w.examMeaning)+'</p>':''))+
+      tab('example','📝 例句',(w.example?'<p lang="en" style="font-size:15px">'+esc(w.example)+' <button class="speaker" data-speak="'+esc(w.example)+'">◖))</button></p>'+(w.translation?'<p class="small" style="margin-top:4px">'+esc(w.translation)+'</p>':''):'<p class="small muted">该词暂无例句。</p>'))+
+      tab('collocation','🔗 搭配/词组',(w.collocations&&w.collocations.length?'<div style="display:flex;gap:6px;flex-wrap:wrap">'+w.collocations.map(c=>'<span lang="en" style="background:#f4f1ff;border-radius:6px;padding:4px 10px;font-size:14px">'+esc(c)+'</span>').join('')+'</div>':'<p class="small muted">暂无搭配数据。</p>'))+
+      tab('usage','💡 用法',(w.commonUsage?'<p><b>常见用法：</b>'+esc(w.commonUsage)+'</p>':'')+(w.examUsage?'<p style="margin-top:6px"><b>考试用法：</b>'+esc(w.examUsage)+'</p>':'')+(!w.commonUsage&&!w.examUsage?'<p class="small muted">暂无用法说明。</p>':''))+
+      tab('affix','🌳 词根词缀',affixHtml+(w.wordFamily&&w.wordFamily.length?'<p style="margin-top:8px"><b>同根词：</b>'+w.wordFamily.map(esc).join(', ')+'</p>':''))+
+      (w.specialMeaning?tab('special','⭐ 熟词生义','<p style="color:#b44529">'+esc(w.specialMeaning)+'</p>'):'')+
+      (w.confuseWith&&w.confuseWith.length?tab('confuse','⚠️ 易混词','<p>'+w.confuseWith.map(esc).join('；')+'</p>'):'')+
+      // 评级按钮
+      '<div class="answerbar" style="margin-top:24px">'+
         '<button class="btn" style="background:#26724c" data-act="know">✓ 认识</button>'+
         '<button class="btn" style="background:#d4930a" data-act="fuzzy">~ 模糊</button>'+
         '<button class="btn" style="background:#b44529" data-act="unknown">✗ 不会</button>'+
       '</div>'+
-      '<div class="hint">键盘：1=认识 2=模糊 3=不会</div>'+
+      '<div class="hint">根据你对这个词的真实掌握程度选择 · 键盘 1/2/3</div>'+
     '</div>'+
   '</div>';
 }
@@ -380,6 +450,27 @@ function detailSection(w){
   return html;
 }
 
+// 阶段一：用户选择了意思
+function quickChoose(i){
+  const s=state.session;if(!s||s.mode!=='quick'||!s.queue[0]||s.queue[0].stage!=='choice')return;
+  const item=s.queue[0];
+  item.choice=i;
+  item.stage='detail';
+  const w=getWord(item.id);
+  const choseCorrect=item.options[i]&&item.options[i].id===w.id;
+  if(choseCorrect)s.correct++;
+  save();render();
+}
+// 折叠面板切换
+function toggleWordTab(tabKey){
+  const s=state.session;if(!s||!s.queue[0])return;
+  const item=s.queue[0];
+  if(!item.openTabs)item.openTabs=[];
+  const idx=item.openTabs.indexOf(tabKey);
+  if(idx>=0)item.openTabs.splice(idx,1);else item.openTabs.push(tabKey);
+  render();
+}
+
 function quickAnswer(known){
   const s=state.session;if(!s||s.mode!=='quick'||!s.queue[0])return;
   const item=s.queue.shift();
@@ -389,10 +480,10 @@ function quickAnswer(known){
   const d=daily();
   if(!state.records[item.id]||state.records[item.id].firstLearned===dateKey())d.new++;
   d.attempts++;if(correct)d.correct++;
-  s.done++;s.correct+=correct?1:0;
+  s.done++;
   // 只有"不会"的词才插入队列后面立即重试；"模糊"的词2天后复习
   if(!correct&&!fuzzy&&!item.retry){
-    s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'learn',retry:true});
+    s.queue.splice(Math.min(3,s.queue.length),0,{id:item.id,stage:'choice',options:null,choice:-1,openTabs:['meaning'],retry:true});
   }
   save();render();
 }
@@ -675,7 +766,7 @@ function reading(){
   const modeToggle='<div class="row" style="margin-bottom:12px"><span class="small muted">模式：</span>'+
     '<button class="btn '+(readingMode==='study'?'':'outline')+'" data-act="setStudyMode" style="padding:8px 14px;font-size:13px">📖 学习模式（可查词）</button>'+
     '<button class="btn '+(readingMode==='exam'?'':'outline')+'" data-act="setExamMode" style="padding:8px 14px;font-size:13px">📝 考试模式（禁查词）</button></div>';
-  const renderText=(text)=>readingMode==='exam'&&!saved?text.replace(/\n/g,'<br>'):text.replace(/\n/g,'<br>').replace(/[A-Za-z]+/g,highlightWord);
+  const renderText=(text)=>readingMode==='exam'&&!saved?text.replace(/<br\s*\/?>/gi,'\n').replace(/\r\n?/g,'\n').replace(/\n/g,'<br>'):highlightReadingText(text,highlightWord);
   return header('阅读训练','成考标准'+formalCount+'篇 · 基础过渡'+(READINGS.length-formalCount)+'篇 · '+(readingMode==='exam'?'考试模式：提交后可查词和翻译':'学习模式：点击单词查词，已学词高亮'))+'<div class="learnwrap">'+nav+modeToggle+'<div class="panel"><div class="row"><h2>'+esc(r.title)+'</h2><span class="badge">'+(r.type||'阅读')+(r.category?' · '+esc(r.category):'')+'</span></div>'+
   (readingMode==='exam'&&!saved?'<p class="small muted">考试模式：请独立完成，提交后可查看查词、翻译和解析。</p>':'<p class="small muted">点击英文单词可查意思。<span class="word-known" style="border-bottom:2px solid #26724c;padding:0 2px">绿色下划线</span>表示你已学过的词。</p>')+
   (r.questions&&r.questions.length?
@@ -684,6 +775,12 @@ function reading(){
     (gloss&&(readingMode==='study'||saved)?'<div class="tip" role="status">'+esc(gloss)+'</div>':'')+
     ((readingMode==='study'||saved)?'<div class="row"><button class="linkbtn" data-act="translate">'+(translation?'收起':'查看')+'全文翻译</button><button class="speaker" data-speak="'+esc(r.text||'')+'">◖)) 朗读全文</button></div>':'')+
     (translation&&(readingMode==='study'||saved)?'<div class="tip">'+esc(r.translation||'')+'</div>':'')+
+    // 本文词组/短语（学习模式或提交后显示）
+    (readingMode==='study'||saved?(()=>{
+      const phs=findPhrasesInText(r.text||'');
+      if(!phs.length)return '';
+      return '<div class="panel" style="background:#fafbff;border:1px solid #e3e8f5;margin-top:14px"><h4 style="margin-bottom:8px">📎 本文词组/短语（'+phs.length+'）</h4><div style="display:flex;gap:6px;flex-wrap:wrap">'+phs.map(p=>'<span style="background:#fff;border:1px solid #dde3f0;border-radius:6px;padding:5px 10px;font-size:13px"><span lang="en"><b>'+esc(p.word)+'</b></span> <span class="muted">'+esc(p.meaning)+'</span></span>').join('')+'</div></div>';
+    })():'')+
     '<div class="reading-questions">'+r.questions.map((q,qi)=>{
       const userAns=saved&&saved.answers?saved.answers[qi]:null;
       const exp=q.explanation?('<b>['+esc(q.questionType||'')+']</b> 定位：'+esc(q.explanation.location||'')+'<br><b>正确答案：</b>'+esc(q.explanation.correctReason||'')+(q.explanation.wrongA?'<br>A: '+esc(q.explanation.wrongA):'')+(q.explanation.wrongB?'<br>B: '+esc(q.explanation.wrongB):'')+(q.explanation.wrongC?'<br>C: '+esc(q.explanation.wrongC):'')+(q.explanation.wrongD?'<br>D: '+esc(q.explanation.wrongD):'')):(q.explain||'');
@@ -692,7 +789,7 @@ function reading(){
     (!saved?'<div class="answerbar"><button class="btn" data-act="submitReading">提交本篇答案</button></div>':'')
     :
     // 单题模式（兼容旧数据）
-    '<h3>'+esc(r.question)+'</h3><p class="reading" lang="en">'+r.text.replace(/[A-Za-z]+/g,highlightWord)+'</p>'+
+    '<h3>'+esc(r.question)+'</h3><p class="reading" lang="en">'+highlightReadingText(r.text,highlightWord)+'</p>'+
     (gloss?'<div class="tip" role="status">'+esc(gloss)+'</div>':'')+
     '<div class="row"><button class="linkbtn" data-act="translate">'+(translation?'收起':'查看')+'全文翻译</button><button class="speaker" data-speak="'+esc(r.text)+'">◖)) 朗读全文</button></div>'+
     (translation?'<div class="tip">'+esc(r.translation||'')+'</div>':'')+
@@ -783,7 +880,7 @@ function readingExamView(){
   '<div class="learnwrap"><div class="panel">'+
   '<div class="row"><h2>'+esc(art.title)+'</h2><span class="badge">'+esc(art.category||'')+'</span></div>'+
   '<p class="small muted">考试模式：禁止查词，提交后才能查看解析。已学词绿色下划线。</p>'+
-  '<p class="reading" lang="en">'+(art.text||'').replace(/\n/g,'<br>').replace(/[A-Za-z]+/g,highlightWord)+'</p>'+
+  '<p class="reading" lang="en">'+highlightReadingText(art.text||'',highlightWord)+'</p>'+
   '<div class="reading-questions">'+art.questions.map((q,qi)=>{
     const userAns=s.answers[s.currentArticle+'-'+qi];
     return '<div class="qblock"><h3>'+(qi+1)+'. '+esc(q.question)+'</h3><div class="choicegrid">'+q.options.map((o,i)=>'<button class="choice '+(userAns===i?'selected':'')+'" data-examq="'+s.currentArticle+'-'+qi+'-'+i+'">'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div></div>';
@@ -823,7 +920,7 @@ function clozeView(){
   const nav='<div class="row" style="margin-bottom:16px"><button class="btn outline" data-cloze="'+prev+'">← 上一篇</button><span class="badge">第 '+(clozeIndex+1)+' / '+CLOZE_TESTS.length+' 篇</span><button class="btn outline" data-cloze="'+next+'">下一篇 →</button></div>';
   // 渲染文章，空格用按钮替换
   const renderText=(text)=>{
-    return text.replace(/___(\d+)___/g,(m,n)=>{
+    return text.replace(/<br\s*\/?>/gi,'\n').replace(/\r\n?/g,'\n').replace(/\n/g,'<br>').replace(/___(\d+)___/g,(m,n)=>{
       const blank=c.blanks.find(b=>b.index===+n);
       if(!blank)return m;
       const userAns=clozeSubmitted?(clozeAnswers[n]??-1):(clozeAnswers[n]??-1);
@@ -876,7 +973,7 @@ const _BUILTIN_SENTENCES=[
   {en:'Because the cost of living has increased rapidly in recent years, many young people find it difficult to save money even though they work full-time.',zh:'由于近年来生活成本快速上涨，许多年轻人发现即使全职工作也很难存钱。',structure:'主句：many young people find it difficult。Because引导原因状语从句；even though引导让步状语从句；it作形式宾语。',grammar:'原因状语从句 + 让步状语从句 + 形式宾语it'}
 ];
 // 统一格式：兼容外部{sentence,translation,structure,grammar,keywords,difficulty}和内置{en,zh,structure,grammar}
-const _EXT_SENTENCES=(typeof window!=="undefined"&&window.LONG_SENTENCES&&Array.isArray(window.LONG_SENTENCES)&&window.LONG_SENTENCES.length>5)?window.LONG_SENTENCES:null;
+const _EXT_SENTENCES=(typeof LONG_SENTENCES!=="undefined"&&Array.isArray(LONG_SENTENCES)&&LONG_SENTENCES.length>5)?LONG_SENTENCES:null;
 const ALL_SENTENCES=_EXT_SENTENCES?
   _EXT_SENTENCES.map(s=>({en:s.sentence||s.en,zh:s.translation||s.zh,structure:s.structure,grammar:s.grammar,keywords:s.keywords||[],difficulty:s.difficulty||2})):
   _BUILTIN_SENTENCES;
@@ -1110,6 +1207,37 @@ function speak(text){
 }
 
 // ===== 查词 =====
+// 阅读正文：统一换行 + 单词可点击（保护已有HTML标签不被破坏）
+function highlightReadingText(text,fn){
+  if(!text)return '';
+  // 先把各种换行形式归一：已有<br>、\r\n、\n 统一处理
+  let t=text.replace(/<br\s*\/?>/gi,'\n').replace(/\r\n?/g,'\n').replace(/\n{2,}/g,'\n\n').replace(/\n/g,'<br>');
+  // 标签整体保留，只把标签外的英文单词包成按钮
+  return t.replace(/(<[^>]+>)|([A-Za-z][A-Za-z'-]*)/g,(m,tag,word)=>tag?tag:fn(word));
+}
+
+// 提取文章中出现的词组/短语（来自词库）
+let _phraseCache=null;
+function findPhrasesInText(text){
+  if(!text)return [];
+  if(!_phraseCache){
+    _phraseCache=WORDS.filter(w=>{
+      const words=(w.word||'').trim().split(/\s+/);
+      return words.length>=2 && words.length<=4; // 2-4个词的短语
+    }).sort((a,b)=>b.word.length-a.word.length);
+  }
+  const lower=text.toLowerCase();
+  const found=[];
+  const seen=new Set();
+  for(const p of _phraseCache){
+    const key=p.word.toLowerCase();
+    if(seen.has(key))continue;
+    if(lower.includes(key)){found.push(p);seen.add(key)}
+    if(found.length>=20)break;
+  }
+  return found;
+}
+
 function lookup(word){
   const low=word.toLowerCase();
   const w=WORDS.find(x=>x.word.toLowerCase()===low);
@@ -1131,6 +1259,8 @@ function bind(){
   document.querySelectorAll('[data-speak]').forEach(b=>b.onclick=()=>speak(b.dataset.speak));
   document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>actions[b.dataset.act]?.());
   document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>answer(+b.dataset.choice));
+  document.querySelectorAll('[data-quickchoice]').forEach(b=>b.onclick=()=>quickChoose(+b.dataset.quickchoice));
+  document.querySelectorAll('[data-wordtab]').forEach(b=>b.onclick=()=>toggleWordTab(b.dataset.wordtab));
   document.querySelectorAll('[data-testchoice]').forEach(b=>b.onclick=()=>testAnswer(+b.dataset.testchoice));
   document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;wordPage=0;render()});
   document.querySelectorAll('[data-reading]').forEach(b=>b.onclick=()=>{readingIndex=+b.dataset.reading;translation=false;gloss='';readingAnswers={};render()});
@@ -1154,9 +1284,6 @@ function bind(){
   document.querySelectorAll('[data-cloze]').forEach(b=>b.onclick=()=>{clozeIndex=+b.dataset.cloze;clozeAnswers={};clozeSubmitted=false;clozeCurrentBlank=null;render()});
   document.querySelectorAll('[data-clozeblank]').forEach(b=>b.onclick=()=>{clozeCurrentBlank=+b.dataset.clozeblank;render()});
   document.querySelectorAll('[data-clozechoice]').forEach(b=>b.onclick=()=>{const p=b.dataset.clozechoice.split('-');answerCloze(+p[0],+p[1])});
-  document.querySelectorAll('[data-dialogue]').forEach(b=>b.onclick=()=>{dialogueIndex=+b.dataset.dialogue;dialogueAnswers={};dialogueSubmitted=false;dialogueCurrentBlank=null;render()});
-  document.querySelectorAll('[data-dlgblank]').forEach(b=>b.onclick=()=>{dialogueCurrentBlank=+b.dataset.dlgblank;render()});
-  document.querySelectorAll('[data-dlgopt]').forEach(b=>b.onclick=()=>{if(dialogueCurrentBlank)answerDialogue(dialogueCurrentBlank,+b.dataset.dlgopt)});
   if($('#search'))$('#search').oninput=e=>{const pos=e.target.selectionStart;query=e.target.value;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
   if($('#settingsform'))$('#settingsform').onsubmit=e=>{
     e.preventDefault();
@@ -1266,7 +1393,10 @@ const actions={
   submitCloze:()=>submitCloze(),
   resetCloze:()=>resetCloze(),
   submitDialogue:()=>submitDialogue(),
-  resetDialogue:()=>resetDialogue()
+  resetDialogue:()=>resetDialogue(),
+  writingBack:()=>{writingMode='list';writingText='';render()},
+  writingPractice:()=>{writingMode='practice';writingText='';render()},
+  saveWriting:()=>saveWriting()
 };
 
 function grammarAnswer(i){
@@ -1288,9 +1418,18 @@ function grammarAnswer(i){
 document.addEventListener('keydown',e=>{
   if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)||document.querySelector('dialog[open]'))return;
   if(view==='quick'){
-    if(e.key==='1')actions.know();
-    if(e.key==='2')actions.fuzzy();
-    if(e.key==='3')actions.unknown();
+    const item=state.session?.queue?.[0];
+    if(item&&item.stage==='choice'){
+      // 选义阶段：1-4 或 A-D
+      const numMap={'1':0,'2':1,'3':2,'4':3,'a':0,'b':1,'c':2,'d':3};
+      const k=e.key.toLowerCase();
+      if(numMap[k]!==undefined)quickChoose(numMap[k]);
+    }else{
+      // 详情阶段：1=认识 2=模糊 3=不会
+      if(e.key==='1')actions.know();
+      if(e.key==='2')actions.fuzzy();
+      if(e.key==='3')actions.unknown();
+    }
   }
   if((view==='review'||view==='test')&&['1','2','3','4'].includes(e.key)){
     if(view==='review')answer(+e.key-1);else testAnswer(+e.key-1);
