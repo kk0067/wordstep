@@ -79,6 +79,10 @@ if (typeof READING_BATCH_7 !== "undefined" && Array.isArray(READING_BATCH_7)) {
   FORMAL_READINGS = FORMAL_READINGS.concat(READING_BATCH_7);
 }
 
+if (typeof READING_BATCH_8 !== "undefined" && Array.isArray(READING_BATCH_8)) {
+  FORMAL_READINGS = FORMAL_READINGS.concat(READING_BATCH_8);
+}
+
 // 合并：基础过渡在前，成考标准在后
 READINGS = BASIC_READINGS.concat(FORMAL_READINGS);
 
