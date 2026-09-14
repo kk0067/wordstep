@@ -26,3 +26,7 @@
 .cloze-blank.correct{background:#d4edda;border-color:#28a745;color:#155724;}
 .cloze-blank.wrong{background:#f8d7da;border-color:#dc3545;color:#721c24;}
 .cloze-text{line-height:2.2;}
+
+/* 补全对话 */
+.dialogue-box{background:#f8f9fa;padding:16px;border-radius:8px;margin:16px 0;}
+.dialogue-box p{margin:8px 0;line-height:1.8;}

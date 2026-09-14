@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const KEY='wordstep-v2',DAY=86400000;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -220,6 +220,7 @@ const navs=[
   ['reading','▧','阅读训练'],
   ['cloze','▦','完形填空'],
   ['sentence','⌁','长难句'],
+  ['dialogue','💬','补全对话'],
   ['grammar','§','语法'],
   ['report','▥','学习报告'],
   ['settings','⚙','设置']
@@ -232,7 +233,7 @@ function header(title,sub='河南成人高考 · 专升本英语 · 30天冲刺'
 }
 
 function render(){
-  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,readingExam:readingExamView,cloze:clozeView,sentence:sentence,grammar:grammarView,report:report,settings:settings}[view]||home)()+'</main></div>';
+  $('#app').innerHTML='<div class="shell"><aside class="sidebar"><div class="brand"><div class="mark">▂▅▇</div><div>词阶<small>WORDSTEP / 30</small></div></div><nav class="nav" aria-label="主导航">'+navs.map(([v,icon,label])=>'<button data-nav="'+v+'" class="'+(view===v?'active':'')+'"><span aria-hidden="true">'+icon+'</span>'+label+'</button>').join('')+'</nav><div class="sidefoot"><b>一步一步，读懂英语</b><br>河南 · 成人专升本<br>词库 '+uniqueWords().length+' 词 · '+phrases().length+' 短语<br>浏览器本地保存</div></aside><main class="main">'+(storageError?'<div class="tip">浏览器存储不可用或记录损坏，请到设置导出当前记录备份。</div>':'')+({home:home,quick:quickLearn,review:reviewView,test:testView,words:wordlist,reading:reading,readingExam:readingExamView,cloze:clozeView,dialogue:dialogueView,sentence:sentence,grammar:grammarView,report:report,settings:settings}[view]||home)()+'</main></div>';
   bind();
 }
 
@@ -875,18 +876,18 @@ const _BUILTIN_SENTENCES=[
   {en:'Because the cost of living has increased rapidly in recent years, many young people find it difficult to save money even though they work full-time.',zh:'由于近年来生活成本快速上涨，许多年轻人发现即使全职工作也很难存钱。',structure:'主句：many young people find it difficult。Because引导原因状语从句；even though引导让步状语从句；it作形式宾语。',grammar:'原因状语从句 + 让步状语从句 + 形式宾语it'}
 ];
 // 统一格式：兼容外部{sentence,translation,structure,grammar,keywords,difficulty}和内置{en,zh,structure,grammar}
-const _EXT_SENTENCES=(typeof LONG_SENTENCES!=="undefined"&&Array.isArray(LONG_SENTENCES)&&LONG_SENTENCES.length>5)?LONG_SENTENCES:null;
-const LONG_SENTENCES=_EXT_SENTENCES?
+const _EXT_SENTENCES=(typeof window!=="undefined"&&window.LONG_SENTENCES&&Array.isArray(window.LONG_SENTENCES)&&window.LONG_SENTENCES.length>5)?window.LONG_SENTENCES:null;
+const ALL_SENTENCES=_EXT_SENTENCES?
   _EXT_SENTENCES.map(s=>({en:s.sentence||s.en,zh:s.translation||s.zh,structure:s.structure,grammar:s.grammar,keywords:s.keywords||[],difficulty:s.difficulty||2})):
   _BUILTIN_SENTENCES;
 let sentenceIndex=0;
 function sentence(){
-  const s=LONG_SENTENCES[sentenceIndex%LONG_SENTENCES.length];
-  const dailyCount=Math.min(5,LONG_SENTENCES.length);
-  const todayStart=(dayNumber()-1)*dailyCount%LONG_SENTENCES.length;
-  return header('每日长难句','先找主干，再看翻译 · 共 '+LONG_SENTENCES.length+' 句 · 今日推荐 '+dailyCount+' 句')+
+  const s=ALL_SENTENCES[sentenceIndex%ALL_SENTENCES.length];
+  const dailyCount=Math.min(5,ALL_SENTENCES.length);
+  const todayStart=(dayNumber()-1)*dailyCount%ALL_SENTENCES.length;
+  return header('每日长难句','先找主干，再看翻译 · 共 '+ALL_SENTENCES.length+' 句 · 今日推荐 '+dailyCount+' 句')+
   '<div class="learnwrap"><div class="panel">'+
-    '<span class="badge">第 '+(sentenceIndex%LONG_SENTENCES.length+1)+' / '+LONG_SENTENCES.length+' 句</span>'+
+    '<span class="badge">第 '+(sentenceIndex%ALL_SENTENCES.length+1)+' / '+ALL_SENTENCES.length+' 句</span>'+
     '<p class="reading" lang="en" style="margin-top:16px">'+esc(s.en)+'</p>'+
     '<button class="speaker" data-speak="'+esc(s.en)+'">◖)) 朗读</button>'+
     '<div class="answerbar" style="margin-top:20px">'+
@@ -904,7 +905,7 @@ function sentence(){
 }
 
 function showSentenceDetail(type){
-  const s=LONG_SENTENCES[sentenceIndex%LONG_SENTENCES.length];
+  const s=ALL_SENTENCES[sentenceIndex%ALL_SENTENCES.length];
   const el=$('#sentenceDetail');
   if(!el)return;
   let html=el.innerHTML;
@@ -1153,6 +1154,9 @@ function bind(){
   document.querySelectorAll('[data-cloze]').forEach(b=>b.onclick=()=>{clozeIndex=+b.dataset.cloze;clozeAnswers={};clozeSubmitted=false;clozeCurrentBlank=null;render()});
   document.querySelectorAll('[data-clozeblank]').forEach(b=>b.onclick=()=>{clozeCurrentBlank=+b.dataset.clozeblank;render()});
   document.querySelectorAll('[data-clozechoice]').forEach(b=>b.onclick=()=>{const p=b.dataset.clozechoice.split('-');answerCloze(+p[0],+p[1])});
+  document.querySelectorAll('[data-dialogue]').forEach(b=>b.onclick=()=>{dialogueIndex=+b.dataset.dialogue;dialogueAnswers={};dialogueSubmitted=false;dialogueCurrentBlank=null;render()});
+  document.querySelectorAll('[data-dlgblank]').forEach(b=>b.onclick=()=>{dialogueCurrentBlank=+b.dataset.dlgblank;render()});
+  document.querySelectorAll('[data-dlgopt]').forEach(b=>b.onclick=()=>{if(dialogueCurrentBlank)answerDialogue(dialogueCurrentBlank,+b.dataset.dlgopt)});
   if($('#search'))$('#search').oninput=e=>{const pos=e.target.selectionStart;query=e.target.value;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)};
   if($('#settingsform'))$('#settingsform').onsubmit=e=>{
     e.preventDefault();
@@ -1217,8 +1221,8 @@ const actions={
   showStructure:()=>showSentenceDetail('structure'),
   showTranslation:()=>showSentenceDetail('translation'),
   showGrammar:()=>showSentenceDetail('grammar'),
-  prevSentence:()=>{sentenceIndex=(sentenceIndex-1+LONG_SENTENCES.length)%LONG_SENTENCES.length;render()},
-  nextSentence:()=>{sentenceIndex=(sentenceIndex+1)%LONG_SENTENCES.length;render()},
+  prevSentence:()=>{sentenceIndex=(sentenceIndex-1+ALL_SENTENCES.length)%ALL_SENTENCES.length;render()},
+  nextSentence:()=>{sentenceIndex=(sentenceIndex+1)%ALL_SENTENCES.length;render()},
   export:()=>{
     const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);
@@ -1260,7 +1264,9 @@ const actions={
   examSubmit:()=>examSubmit(),
   examBack:()=>{examSession=null;view='reading';render();},
   submitCloze:()=>submitCloze(),
-  resetCloze:()=>resetCloze()
+  resetCloze:()=>resetCloze(),
+  submitDialogue:()=>submitDialogue(),
+  resetDialogue:()=>resetDialogue()
 };
 
 function grammarAnswer(i){
